@@ -11,4 +11,7 @@ data class Receivers(
     var attachAuditLog: Int = 0,
 
     var eventCategory: AuditLog.Event.Category
-)
+) {
+    val isAttachConfig: Boolean
+        get() = attachConfig
+}
