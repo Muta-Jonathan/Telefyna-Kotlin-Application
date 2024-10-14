@@ -1,11 +1,16 @@
 package org.avventomedia.app.telefyna
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
@@ -13,10 +18,12 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.StrictMode
-import android.provider.Settings.System.getConfiguration
 import android.view.KeyEvent
+import android.view.View
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.VideoView
+import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -24,23 +31,29 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlaybackException
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import org.apache.commons.lang3.StringUtils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
 import org.avventomedia.app.telefyna.listen.Maintenance
 import org.avventomedia.app.telefyna.listen.TelefynaUnCaughtExceptionHandler
 import org.avventomedia.app.telefyna.modal.Config
+import org.avventomedia.app.telefyna.modal.Graphics
+import org.avventomedia.app.telefyna.modal.LowerThird
 import org.avventomedia.app.telefyna.modal.Playlist
 import org.avventomedia.app.telefyna.modal.Seek
 import org.avventomedia.app.telefyna.player.TelefynaRenderersFactory
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
+import java.io.FileWriter
 import java.io.IOException
 import java.io.UnsupportedEncodingException
 import java.net.URLDecoder
@@ -50,7 +63,9 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.system.exitProcess
 
+@UnstableApi
 class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListener, Player.Listener {
 
     companion object {
@@ -71,25 +86,22 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     var alarmManager: AlarmManager? = null
         private set
 
-    var handler: Handler? = null
-        private set
+    private var handler: Handler? = null
 
     var maintenanceHandler: Handler? = null
         private set
 
-    var maintenance: Maintenance? = null
-        private set
+    private var maintenance: Maintenance? = null
 
     private var nowPlayingIndex: Int? = null
     private var failedBecauseOfInternetIndex: Int? = null
 
-    var previousPlayer: ExoPlayer? = null
-        private set
+    private var previousPlayer: ExoPlayer? = null
 
-    var player: ExoPlayer? = null
-    var currentPlaylist: Playlist? = null
+    private var player: ExoPlayer? = null
+    private var currentPlaylist: Playlist? = null
     private var playlistByIndex: MutableList<Playlist> = mutableListOf()
-    private var programItems: List<MediaItem>? = null
+    private var programItems: MutableList<MediaItem> = mutableListOf()
 //    private var tickerView: TickerView? = null
     private var lowerThirdView: VideoView? = null
 
@@ -132,27 +144,27 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun cachePlayingAt(index: Int, seekTo: Long, noProgramTransition: Boolean) {
-        val at = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist.type && startOnePlayProgramItem != null) {
+        val at = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
             0
         } else {
             nowProgramItem ?: 0
         }
 
-        var atValue = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist.type && startOnePlayProgramItem != null) {
+        var atValue = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
             startOnePlayProgramItem ?: 0
         } else {
             nowProgramItem ?: 0
         }
 
-        atValue = if (noProgramTransition && Playlist.Type.LOCAL_RESUMING_ONE != currentPlaylist.type) {
+        atValue = if (noProgramTransition && Playlist.Type.LOCAL_RESUMING_ONE != currentPlaylist?.type) {
             atValue - 1
         } else {
             atValue
         }
 
-        val programName = programItems?.get(at)?.let { getMediaItemName(it) }
+        val programName = programItems.get(at)?.let { getMediaItemName(it) }
         if (!programName.isNullOrBlank()) { // exclude bumpers
-            val editor = sharedpreferences.edit()
+            val editor = sharedPreferences.edit()
             editor.putInt(getPlaylistPlayKey(index), atValue)
             editor.putLong(getPlaylistSeekTo(index), seekTo)
             editor.putLong(getPlaylistLastModified(index), getLastModifiedFor(index))
@@ -165,15 +177,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun getSharedPlaylistMediaItem(index: Int): Int {
-        return sharedpreferences.getInt(getPlaylistPlayKey(index), 0)
+        return sharedPreferences.getInt(getPlaylistPlayKey(index), 0)
     }
 
     private fun getSharedPlaylistLastModified(index: Int): Long {
-        return sharedpreferences.getLong(getPlaylistLastModified(index), getLastModifiedFor(index))
+        return sharedPreferences.getLong(getPlaylistLastModified(index), getLastModifiedFor(index))
     }
 
     private fun getSharedPlaylistSeekTo(index: Int): Long {
-        return sharedpreferences.getLong(getPlaylistSeekTo(index), 0)
+        return sharedPreferences.getLong(getPlaylistSeekTo(index), 0)
     }
 
     /**
@@ -183,12 +195,19 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
      * @return
      */
     private fun canResume(index: Int, repeat: Playlist.Repeat): Boolean {
-        val now = dateFormat.format(Calendar.getInstance().time)
+        val now = dateFormat?.format(Calendar.getInstance().time)
         return try {
             val lastPlayed = Calendar.getInstance()
             val today = Calendar.getInstance()
-            lastPlayed.time = dateFormat.parse(sharedpreferences.getString(getPlaylistLastPlayed(getPlaylistIndex(index)), now) ?: now) ?: now)
-            today.time = (dateFormat?.parse(now) ?: now) as Date
+            lastPlayed.time = ((sharedPreferences.getString(getPlaylistIndex(index)?.let {
+                getPlaylistLastPlayed(
+                    it
+                )
+            }, now) ?: now)?.let {
+                dateFormat?.parse(it)
+            } ?: now) as Date // Fallback to `now` if the parsing fails or result is null
+
+            today.time = (now?.let { dateFormat?.parse(it) } ?: now) as Date
             isRepeatable(repeat, lastPlayed, today)
         } catch (e: ParseException) {
             e.printStackTrace()
@@ -209,18 +228,22 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return today.after(lastPlayed)
     }
 
+    @SuppressLint("DefaultLocale")
     private fun getPlaylistPlayKey(index: Int): String {
         return String.format(PLAYLIST_PLAY_FORMAT, PLAYLIST_PLAY, index)
     }
 
+    @SuppressLint("DefaultLocale")
     private fun getPlaylistLastModified(index: Int): String {
         return String.format(PLAYLIST_PLAY_FORMAT, PLAYLIST_LAST_MODIFIED, index)
     }
 
+    @SuppressLint("DefaultLocale")
     private fun getPlaylistSeekTo(index: Int): String {
         return String.format(PLAYLIST_PLAY_FORMAT, PLAYLIST_SEEK_TO, index)
     }
 
+    @SuppressLint("DefaultLocale")
     private fun getPlaylistLastPlayed(index: Int): String {
         return String.format(PLAYLIST_PLAY_FORMAT, PLAYLIST_LAST_PLAYED, index)
     }
@@ -242,7 +265,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         maintenance = Maintenance()
         maintenanceHandler = Handler()
         handler = Handler()
-        sharedpreferences = getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        sharedPreferences = getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
 
@@ -345,13 +368,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     private fun cacheNowPlaying(noProgramTransition: Boolean) {
         val playerView = getPlayerView(false)
-        val now = getPlaylistIndex(nowPlayingIndex)
+        val now = nowPlayingIndex?.let { getPlaylistIndex(it) }
         if (now != null && playerView != null && player != null) {
             trackingNowPlaying(now, player!!.currentPosition, noProgramTransition)
         }
     }
 
-    private fun buildPlayer(): ExoPlayer {
+    @OptIn(UnstableApi::class)
+    private fun buildPlayer(context: Context): ExoPlayer {
         /*
         val delay = getConfiguration().wait * 1000
         val builder = DefaultLoadControl.Builder()
@@ -363,10 +387,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         )
         val player = SimpleExoPlayer.Builder(instance).setLoadControl(builder.build()).build()
         */
-        val renderersFactory = TelefynaRenderersFactory(instance)
-        player = instance?.let { ExoPlayer.Builder(it, renderersFactory).build() }
+        // Create a custom RenderersFactory if needed
+        val renderersFactory = instance?.let { TelefynaRenderersFactory(it) }
+        player = renderersFactory?.let { ExoPlayer.Builder(context, it).build() }
 
-        return player
+        return player as ExoPlayer
     }
 
     private fun addBumpers(bumpers: MutableList<MediaItem>, bumperFolder: File, addedFirstItem: Boolean) {
@@ -380,8 +405,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-    private fun getPlaylistIndex(index: Int?): Int {
-        return index?.let {
+    private fun getPlaylistIndex(index: Int): Int {
+        return index.let {
             playlistByIndex[it].schedule ?: it
         }
     }
@@ -400,7 +425,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     @RequiresApi(Build.VERSION_CODES.O)
     @Synchronized
-    fun switchNow(index: Int, isCurrentSlot: Boolean) {
+    fun switchNow(index: Int, isCurrentSlot: Boolean, context: Context) {
         val playlist = playlistByIndex[index]
         Logger.log(AuditLog.Event.PLAYLIST, getPlayingAtIndexLabel(index), GsonBuilder().setPrettyPrinting().create().toJson(playlist))
 
@@ -416,38 +441,38 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             // Setup objects; skip playlist with nothing to play
             nowPlayingIndex = index
             currentPlaylist = playlist
-            programItems = maintenance?.retrievePrograms(currentPlaylist)
-            Monitor.instance.getHandler().removeCallbacksAndMessages(null)
+            programItems = maintenance?.retrievePrograms(currentPlaylist) as MutableList<MediaItem>
+            Monitor.instance?.handler?.removeCallbacksAndMessages(null)
             val firstDefaultIndex = getFirstDefaultIndex()
             val secondDefaultIndex = getSecondDefaultIndex()
 
             if (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
-                Monitor.instance.getHandler().postDelayed({
-                    if (Utils.internetConnected()) {
-                        switchNow(nowPlayingIndex!!, isCurrentSlot)
-                    } else {
-                        fillingForLackOfInternet = true
-                        failedBecauseOfInternetIndex = nowPlayingIndex
-                        switchNow(secondDefaultIndex, isCurrentSlot)
-                    }
-                }, getConfiguration().wait * 1000L)
+                (configuration?.wait)?.times(1000L)?.let {
+                    Monitor.instance?.handler?.postDelayed({
+                        if (Utils.internetConnected()) {
+                            switchNow(nowPlayingIndex!!, isCurrentSlot, context)
+                        } else {
+                            fillingForLackOfInternet = true
+                            failedBecauseOfInternetIndex = nowPlayingIndex
+                            switchNow(secondDefaultIndex, isCurrentSlot, context)
+                        }
+                    }, it)
+                }
             } else {
                 keepBroadcasting()
-                if (secondDefaultIndex == nowPlayingIndex &&
-                    (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() ||
-                            currentPlaylist!!.type != Playlist.Type.ONLINE && programItems?.isEmpty() == true)
+                if (secondDefaultIndex == nowPlayingIndex && (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() || currentPlaylist!!.type != Playlist.Type.ONLINE && programItems.isEmpty())
                 ) {
                     Logger.log(AuditLog.Event.EMPTY_FILLERS)
-                    switchNow(firstDefaultIndex, isCurrentSlot)
+                    switchNow(firstDefaultIndex, isCurrentSlot, context)
                     return
                 } else {
-                    if (programItems?.isEmpty() == true) {
+                    if (programItems.isEmpty()) {
                         Logger.log(AuditLog.Event.PLAYLIST_EMPTY_PLAY, getPlayingAtIndexLabel(nowPlayingIndex))
-                        switchNow(currentPlaylist!!.emptyReplacer ?: firstDefaultIndex, isCurrentSlot)
+                        switchNow(currentPlaylist!!.emptyReplacer ?: firstDefaultIndex, isCurrentSlot, context)
                         return
                     } else {
                         previousPlayer = player
-                        player = buildPlayer() // TODO: test
+                        player = buildPlayer(context) // TODO: test
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
 
@@ -463,20 +488,18 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         if (currentPlaylist!!.type != Playlist.Type.ONLINE) {
                             // Resume local resumable programs
                             if (currentPlaylist!!.isResuming()) {
-                                val previousProgram = getPlaylistIndex(nowPlayingIndex)?.let {
-                                    getSharedPlaylistMediaItem(
-                                        it
-                                    )
-                                }
-                                var previousSeekTo = getPlaylistIndex(nowPlayingIndex)?.let {
-                                    getSharedPlaylistSeekTo(
-                                        it
-                                    )
-                                }
+                                val previousProgram = getSharedPlaylistMediaItem(
+                                    getPlaylistIndex(nowPlayingIndex!!)
+                                )
+                                var previousSeekTo = getSharedPlaylistSeekTo(
+                                    getPlaylistIndex(nowPlayingIndex!!)
+                                )
 
                                 if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
                                     // previousProgram == -1 when it was reset
-                                    nowProgramItem = if (previousProgram == -1 || previousProgram == programItems.size - 1) {
+                                    nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems?.size)?.minus(
+                                            1
+                                        )) {
                                         0
                                     } else if (currentPlaylist!!.repeat?.let {
                                             canResume(
@@ -496,25 +519,29 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
                                 currentPlaylist!!.name?.let {
                                     if (previousSeekTo != null) {
-                                        Logger.log(AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME,
-                                            it, getMediaItemName(nowProgramItem?.let { it1 ->
-                                                programItems?.get(
-                                                    it1
-                                                )
-                                            }), previousSeekTo)
+                                        nowProgramItem?.let { it1 ->
+                                            programItems.get(
+                                                it1
+                                            )
+                                        }?.let { it2 -> getMediaItemName(it2) }?.let { it3 ->
+                                            Logger.log(AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME,
+                                                it, it3, previousSeekTo)
+                                        }
                                     }
                                 }
                                 if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE) {
-                                    val item = nowProgramItem?.let { programItems?.get(it) }
+                                    val item = nowProgramItem?.let { programItems[it] }
                                     programItems.clear()
-                                    programItems.add(item)
+                                    if (item != null) {
+                                        programItems.add(item)
+                                    }
                                     startOnePlayProgramItem = nowProgramItem
                                     nowProgramItem = 0
                                 } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
                                     nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo!!
                                 }
                             } else {
-                                val bumperFolder = getBumperDirectory(currentPlaylist.isUsingExternalStorage)
+                                val bumperFolder = getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)
                                 val generalBumpersIntro = mutableListOf<MediaItem>()
                                 val generalBumpersOutro = mutableListOf<MediaItem>()
                                 val specialBumpersIntro = mutableListOf<MediaItem>()
@@ -523,7 +550,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 val playListOutroBumpers = mutableListOf<MediaItem>()
 
                                 // Prepare intro general bumpers
-                                if (currentPlaylist.isPlayingGeneralBumpers) {
+                                if (currentPlaylist!!.isPlayingGeneralBumpers) {
                                     addBumpers(generalBumpersIntro, File("$bumperFolder${File.separator}General-INTRO"), false)
                                     addBumpers(generalBumpersOutro, File("$bumperFolder${File.separator}General-OUTRO"), false)
                                 }
@@ -572,7 +599,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                     )!!
                                 } else { // Slot is ended, switch to fillers
                                     Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getPlayingAtIndexLabel(nowPlayingIndex))
-                                    switchNow(secondDefaultIndex, false)
+                                    switchNow(secondDefaultIndex, false, context)
                                     return
                                 }
                             }
@@ -580,12 +607,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
                         val current = getPlayerView(true).player
                         instance?.let { current?.removeListener(it) }
-                        programItems?.let { player!!.setMediaItems(it) }
+                        programItems.let { player!!.setMediaItems(it) }
                         nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
                         player!!.prepare()
                         instance?.let { player!!.addListener(it) }
                         player!!.playWhenReady = true
-                        nowProgramItem?.let { programItems?.get(it) }
+                        nowProgramItem?.let { programItems[it] }
                             ?.let { getMediaItemName(it) }?.let {
                                 Logger.log(
                                     if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
@@ -620,10 +647,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun endPlayer(player: Player?) {
-        player?.apply {
-            videoSurfaceView = null
-            clearVideoSurface()
-            release()
+        player?.let {
+            it.setVideoSurfaceView(null)
+            it.clearVideoSurface()
+            it.release()
         }
     }
 
@@ -647,13 +674,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun seekImmediateNonCompletedSlot(playlist: Playlist, mediaItems: List<MediaItem>): Seek? {
-        val start = playlist.startTime
+        val start = playlist.getStartTime()
         if (start != null) {
             val startTime = start.timeInMillis
             val now = Calendar.getInstance().timeInMillis
             mediaItems.forEachIndexed { i, mediaItem ->
                 val duration = getDuration(mediaItem.mediaId)
-                if ((duration ?: 0 + startTime) > now) {
+                if ((duration ?: (0 + startTime)) > now) {
                     return Seek(i, now - startTime)
                 }
             }
@@ -662,6 +689,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return null
     }
 
+    @OptIn(UnstableApi::class)
     private fun getPlayerView(reset: Boolean): PlayerView {
         val playerView: PlayerView = findViewById(R.id.player)
         if (reset) {
@@ -677,11 +705,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             when (state) {
                 Player.STATE_ENDED -> {
                     Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getNowPlayingPlaylistLabel())
-                    switchNow(getSecondDefaultIndex(), false)
+                    switchNow(getSecondDefaultIndex(), false, this)
                 }
                 Player.STATE_BUFFERING -> {
-                    if (currentPlaylist.type == Playlist.Type.ONLINE) {
-                        player.seekTo(player.contentDuration) // hack
+                    if (currentPlaylist?.type == Playlist.Type.ONLINE) {
+                        player?.seekTo(player!!.contentDuration) // hack
                     }
                 }
             }
@@ -701,48 +729,60 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         nowPlayingIndex?.let {
             nowProgramItem = nowProgramItem!! + 1
             cacheNowPlaying(false)
-            Logger.log(AuditLog.Event.PLAYLIST_ITEM_CHANGE, getNowPlayingPlaylistLabel(), getMediaItemName(mediaItem))
+            mediaItem?.let { it1 -> getMediaItemName(it1) }?.let { it2 ->
+                Logger.log(AuditLog.Event.PLAYLIST_ITEM_CHANGE, getNowPlayingPlaylistLabel(),
+                    it2
+                )
+            }
         }
     }
 
+    @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.N)
     override fun onPlayerError(error: PlaybackException) {
         Logger.log(AuditLog.Event.ERROR, "${error.cause}: ${error.message}")
-        cacheNowPlaying(currentPlaylist?.type?.name.startsWith("LOCAL_RESUMING"))
+        currentPlaylist?.type?.name?.let { cacheNowPlaying(it.startsWith("LOCAL_RESUMING")) }
 
-        when (val cause = error.cause?.cause) {
+        // keep reloading existing program if internet is on and off
+        when (error.cause?.cause) {
             is UnknownHostException, is IOException -> {
                 Logger.log(AuditLog.Event.NO_INTERNET, "Failing to play program because of no internet connection")
                 failedBecauseOfInternetIndex = nowPlayingIndex
-                // Wait for set time on config before reloading
+                // this will wait for set time on config before reloading
             }
             is UnrecognizedInputFormatException -> {
                 if (player?.isCurrentWindowSeekable == true) {
                     nowProgramItem?.plus(1)?.let { player!!.seekTo(it, 0) }
                 }
             }
-            is MediaCodecRenderer.DecoderInitializationException -> nowPlayingIndex?.let {
-                switchNow(
-                    it, false)
+            is MediaCodecRenderer.DecoderInitializationException -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
+                }
             }
             else -> {
-                if (!player?.isPlaying) nowPlayingIndex?.let { switchNow(it, false) }
+                if (!player?.isPlaying!!) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
+                    }
+                }
             }
         }
     }
 
+
     private fun getPlayingAtIndexLabel(index: Int?): String {
-        val playlistName = playlistByIndex[getPlaylistIndex(index)].name
+        val playlistName = playlistByIndex[index?.let { getPlaylistIndex(it) }!!].name
         return "$playlistName #$index"
     }
 
     private fun getNowPlayingPlaylistLabel(): String {
-        val playlistName = nowPlayingIndex?.let { currentPlaylist.name } ?: ""
+        val playlistName = nowPlayingIndex?.let { currentPlaylist?.name } ?: ""
         return "$playlistName #$nowPlayingIndex"
     }
 
     override fun onNotificationPosted(notificationId: Int, notification: Notification, ongoing: Boolean) {
-        if (getConfiguration().isNotificationsDisabled) {
+        if (configuration?.isNotificationsDisabled == true) {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId)
         }
     }
@@ -778,7 +818,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun askForPermissions(permissions: List<String>) {
-        ActivityCompat.requestPermissions(instance, permissions.toTypedArray(), PackageManager.PERMISSION_GRANTED)
+        instance?.let { ActivityCompat.requestPermissions(it, permissions.toTypedArray(), PackageManager.PERMISSION_GRANTED) }
     }
 
     private fun missingPermissions(): List<String> {
@@ -789,10 +829,16 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             Manifest.permission.INTERNET,
             Manifest.permission.ACCESS_NETWORK_STATE
         )
-        return allPermissions.filter { permission ->
-            instance?.let { ContextCompat.checkSelfPermission(it, permission) } != PackageManager.PERMISSION_GRANTED
+
+        val missingPermissions = mutableListOf<String>()
+        for (permission in allPermissions) {
+            if (instance?.let { ContextCompat.checkSelfPermission(it, permission) } != PackageManager.PERMISSION_GRANTED) {
+                missingPermissions.add(permission)
+            }
         }
+        return missingPermissions
     }
+
 
     @RequiresApi(Build.VERSION_CODES.N)
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -809,6 +855,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     override fun onBackPressed() {
+        super.onBackPressed()
         // moveTaskToBack(false)
     }
 
@@ -821,9 +868,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     private fun triggerGraphics(nowPosition: Long) {
         hideLogo()
-        hideTicker()
+//        hideTicker()
         hideLowerThird()
-        val graphics = currentPlaylist.graphics
+        val graphics = currentPlaylist?.graphics
         graphics?.let {
             // Handle logo
             if (it.displayLogo) {
@@ -834,9 +881,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             val lowerThirds = it.lowerThirds
             lowerThirds?.forEach { ltd ->
                 if (StringUtils.isNotBlank(ltd.starts) && ltd.file != null) {
-                    ltd.startsArray.forEach { s ->
+                    ltd.getStartsArray().forEach { s ->
                         val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
-                        Monitor.instance.getHandler().postDelayed({
+                        Monitor.instance?.handler?.postDelayed({
                             showLowerThird(ltd)
                         }, start - nowPosition)
                     }
@@ -846,14 +893,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             // Handle ticker
             val news = it.news
             news?.let { newsData ->
-                val messages = newsData.messagesArray
+                val messages = newsData.getMessagesArray()
                 if (messages.isNotEmpty()) {
-                    initTickers(newsData)
-                    newsData.startsArray.forEach { s ->
+//                    initTickers(newsData)
+                    newsData.getStartsArray().forEach { s ->
                         val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
                         if (start >= nowPosition) {
-                            Monitor.instance.getHandler().postDelayed({
-                                showTicker(newsData)
+                            Monitor.instance?.handler?.postDelayed({
+                        //                                showTicker(newsData)
                             }, start - nowPosition)
                         }
                     }
@@ -872,16 +919,16 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-    private fun hideTicker() {
-        tickerView?.let {
-            if (it.visibility != View.GONE) {
-                it.visibility = View.GONE
-                it.removeChildViews()
-                it.destroyAllScheduledTasks()
-                Logger.log(AuditLog.Event.DISPLAY_NEWS_OFF)
-            }
-        }
-    }
+//    private fun hideTicker() {
+//        tickerView?.let {
+//            if (it.visibility != View.GONE) {
+//                it.visibility = View.GONE
+//                it.removeChildViews()
+//                it.destroyAllScheduledTasks()
+//                Logger.log(AuditLog.Event.DISPLAY_NEWS_OFF)
+//            }
+//        }
+//    }
 
     private fun hideLogo() {
         val topLogo = findViewById<View>(R.id.topLogo)
@@ -895,49 +942,49 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun showLowerThird(lowerThird: LowerThird) {
-        val path = getLowerThirdDirectory(currentPlaylist.isUsingExternalStorage()) + File.separator + lowerThird.file
+        val path = currentPlaylist?.let { getLowerThirdDirectory(it.isUsingExternalStorage) } + File.separator + lowerThird.file
         val lowerThirdClip = File(path)
 
         if (Utils.validPlayableItem(lowerThirdClip)) {
             Logger.log(AuditLog.Event.LOWER_THIRD_ON, path)
             lowerThirdView = findViewById(R.id.lowerThird) // initiate a video view
-            lowerThirdView.setVideoURI(Uri.fromFile(lowerThirdClip))
-            lowerThirdView.start()
-            lowerThirdView.visibility = View.VISIBLE
+            lowerThirdView!!.setVideoURI(Uri.fromFile(lowerThirdClip))
+            lowerThirdView!!.start()
+            lowerThirdView!!.visibility = View.VISIBLE
 
-            lowerThirdView.setOnCompletionListener {
+            lowerThirdView!!.setOnCompletionListener {
                 if (lowerThird.replays >= lowerThirdLoop) {
                     lowerThirdLoop++
-                    lowerThirdView.start()
+                    lowerThirdView!!.start()
                 } else {
                     hideLowerThird()
                     lowerThirdLoop = 1
                 }
             }
 
-            lowerThirdView.setOnErrorListener { _, _, _ ->
+            lowerThirdView!!.setOnErrorListener { _, _, _ ->
                 Logger.log(AuditLog.Event.ERROR, "Failed to play ${lowerThird.file}")
                 true
             }
         }
     }
 
-    private fun initTickers(news: News) {
-        tickerView = findViewById(R.id.tickerView)
-        tickerView.setReplays(news.replays)
-        tickerView.setDisplacement(news.speed.displacement)
-        tickerView.setBackgroundColor(getColor(android.R.color.transparent))
+//    private fun initTickers(news: News) {
+//        tickerView = findViewById(R.id.tickerView)
+//        tickerView.setReplays(news.replays)
+//        tickerView.setDisplacement(news.speed.displacement)
+//        tickerView.setBackgroundColor(getColor(android.R.color.transparent))
+//
+//        for (message in news.messagesArray) {
+//            tickerView.addChildView(tickerView(message))
+//        }
+//    }
 
-        for (message in news.messagesArray) {
-            tickerView.addChildView(tickerView(message))
-        }
-    }
-
-    private fun showTicker(news: News) {
-        Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, news.messages)
-        tickerView.showTickers() // TODO: add time run in context
-        tickerView.visibility = View.VISIBLE
-    }
+//    private fun showTicker(news: News) {
+//        Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, news.messages)
+//        tickerView.showTickers() // TODO: add time run in context
+//        tickerView.visibility = View.VISIBLE
+//    }
 
     private fun showLogo(logoPosition: Graphics.LogoPosition?) {
         val logo = File(getProgramsFolderPath(false) + File.separator + "logo.png")
@@ -958,28 +1005,32 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-    private fun tickerView(message: String): TextView {
-        val tickerView = TextView(instance)
-        tickerView.layoutParams = LinearLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
-        tickerView.text = message
-        tickerView.textSize = resources.getDimension(R.dimen.tickerFontSize)
-        tickerView.setBackgroundColor(getColor(R.color.trans))
-        tickerView.setTextColor(ContextCompat.getColor(instance, android.R.color.white))
-        tickerView.setPadding(100, 2, 100, 2)
-        return tickerView
-    }
+//    private fun tickerView(message: String): TextView {
+//        val tickerView = TextView(instance)
+//        tickerView.layoutParams = LinearLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+//        tickerView.text = message
+//        tickerView.textSize = resources.getDimension(R.dimen.tickerFontSize)
+//        tickerView.setBackgroundColor(getColor(R.color.trans))
+//        tickerView.setTextColor(ContextCompat.getColor(instance, android.R.color.white))
+//        tickerView.setPadding(100, 2, 100, 2)
+//        return tickerView
+//    }
 
-    private fun regenerateConfiguration(resetSeekTo: Boolean): Config {
-        val config = getConfiguration()
-        val playlists = config.playlists
-        for (i in playlists.indices) {
-            val playlist = playlists[i]
-            if (playlist.isResuming) {
-                playlist.seekTo = if (resetSeekTo) Seek(0, 0) else Seek(getSharedPlaylistMediaItem(i), getSharedPlaylistSeekTo(i))
-                playlists[i] = playlist
+    private fun regenerateConfiguration(resetSeekTo: Boolean): Config? {
+        val config = configuration
+        val playlists = config?.playlists
+        if (playlists != null) {
+            for (i in playlists.indices) {
+                val playlist = playlists[i]
+                if (playlist.isResuming()) {
+                    playlist.seekTo = if (resetSeekTo) Seek(0, 0) else Seek(getSharedPlaylistMediaItem(i), getSharedPlaylistSeekTo(i))
+                    playlists[i] = playlist
+                }
             }
         }
-        config.playlists = playlists
+        if (config != null) {
+            config.playlists = playlists
+        }
         return config
     }
 
@@ -987,44 +1038,55 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun keepBroadcasting() {
         nowPlayingIndex?.let {
             if (keepOnAir != null) {
-                handler.removeCallbacks(keepOnAir)
+                handler?.removeCallbacks(keepOnAir!!)
             }
 
-            val delay = getConfiguration().wait * 1000L
-            handler.postDelayed(keepOnAir = {
-                when {
-                    getRebootFile().exists() -> {
-                        getRebootFile().delete()
-                        rebootDevice()
-                    }
-                    getRestartFile().exists() -> {
-                        getRestartFile().delete()
-                        restartApp()
-                    }
-                    else -> {
-                        if (getBackupConfigFile().exists()) backupConfig(false)
-                        if (getBackupConfigResetFile().exists()) backupConfig(true)
-
-                        if (nowPlayingIndex == getSecondDefaultIndex() && fillingForLackOfInternet && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
-                            fillingForLackOfInternet = false
-                            Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                            switchNow(failedBecauseOfInternetIndex, false)
-                            failedBecauseOfInternetIndex = null
-                        } else {
-                            handler.postDelayed(keepOnAir, delay)
-                            if (offAir) {
-                                offAir = false
-                                Logger.log(AuditLog.Event.STUCK, delay / 1000)
-                                switchNow(nowPlayingIndex, false)
-                            } else {
-                                offAir = player == null || !player!!.isPlaying
-                            }
-                        }
-                    }
-                }
-            }, delay)
+            val delay = (configuration?.wait)?.times(1000L)
+            if (delay != null) {
+                handler?.postDelayed({ keepOnAir() }, delay)
+            }
         }
     }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun keepOnAir() {
+        val delay = (configuration?.wait)?.times(1000L)
+        when {
+            getRebootFile().exists() -> {
+                getRebootFile().delete()
+                rebootDevice()
+            }
+            getRestartFile().exists() -> {
+                getRestartFile().delete()
+                restartApp()
+            }
+            else -> {
+                if (getBackupConfigFile().exists()) backupConfig(false)
+                if (getBackupConfigResetFile().exists()) backupConfig(true)
+
+                if (nowPlayingIndex == getSecondDefaultIndex() && fillingForLackOfInternet && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
+                    fillingForLackOfInternet = false
+                    Logger.log(AuditLog.Event.INTERNET_RESTORED)
+                    switchNow(failedBecauseOfInternetIndex!!, false, this)
+                    failedBecauseOfInternetIndex = null
+                } else {
+                    if (delay != null) {
+                        handler?.postDelayed({ keepOnAir() }, delay)
+                    }
+                    if (offAir) {
+                        offAir = false
+                        if (delay != null) {
+                            Logger.log(AuditLog.Event.STUCK, delay / 1000)
+                        }
+                        switchNow(nowPlayingIndex!!, false, this)
+                    } else {
+                        offAir = player == null || !player!!.isPlaying
+                    }
+                }
+            }
+        }
+    }
+
 
     private fun rebootDevice() {
         try {
@@ -1035,13 +1097,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun restartApp() {
-        maintenance.cancelPendingIntents()
-        val intent = Intent(Monitor.instance, Monitor::class.java)
-        val mPendingIntent = PendingIntent.getActivity(Monitor.instance, 700000001, intent, PendingIntent.FLAG_CANCEL_CURRENT)
-        alarmManager.set(AlarmManager.RTC, System.currentTimeMillis() + 100, mPendingIntent)
+        maintenance?.cancelPendingIntents()
+        val intent = Intent(instance, Monitor::class.java)
+        val mPendingIntent = PendingIntent.getActivity(Monitor.instance, 700000001, intent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        alarmManager?.set(AlarmManager.RTC, System.currentTimeMillis() + 100, mPendingIntent)
         Logger.log(AuditLog.Event.RESTARTING)
-        Monitor.instance.finish()
-        System.exit(2)
+        Monitor.instance?.finish()
+        exitProcess(2)
     }
 
     private fun backupConfig(resetSeekTo: Boolean) {
@@ -1058,7 +1121,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create().toJson(config, writer)
             }
         } catch (e: IOException) {
-            Logger.log(AuditLog.Event.ERROR, e.message)
+            e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }
         }
     }
 

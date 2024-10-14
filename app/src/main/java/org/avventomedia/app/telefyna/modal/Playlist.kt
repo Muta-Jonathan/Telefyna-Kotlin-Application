@@ -47,6 +47,13 @@ data class Playlist(
     var seekTo: Seek = Seek(0, 0),
     var repeat: Repeat? = null
 ) {
+
+    val isPlayingGeneralBumpers: Boolean
+        get() = playingGeneralBumpers
+
+    val isUsingExternalStorage: Boolean
+        get() = usingExternalStorage
+
     fun isStarted(): Boolean {
         val current = Calendar.getInstance()
         val (hour, min) = start?.split(":")?.map { it.toInt() } ?: return false

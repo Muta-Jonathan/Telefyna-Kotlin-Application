@@ -51,7 +51,11 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
 
     implementation(libs.commons.io)
+    implementation (libs.commons.lang3)
     implementation(libs.javax.mail)
+
+    // added Gson
+    implementation (libs.gson)
     // added Exoplayer
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.dash)

@@ -18,4 +18,7 @@ data class Config(
 ) {
     val isAutomationDisabled: Boolean
             get() = automationDisabled
+
+    val isNotificationsDisabled: Boolean
+        get() = notificationsDisabled
 }
