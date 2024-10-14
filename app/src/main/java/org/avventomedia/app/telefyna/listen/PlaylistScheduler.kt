@@ -19,7 +19,7 @@ class PlaylistScheduler : BroadcastReceiver() {
         try {
             Monitor.instance?.switchNow(
                 intent.getIntExtra(PLAYLIST_INDEX, Monitor.instance!!.getFirstDefaultIndex()),
-                false
+                false, Monitor.instance!!
             )
         } catch (e: Exception) {
             e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }

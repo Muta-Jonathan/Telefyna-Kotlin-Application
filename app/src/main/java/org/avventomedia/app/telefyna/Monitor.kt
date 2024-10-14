@@ -273,7 +273,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // allow network etc actions since telefyna depends on all of these
         StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().permitAll().build())
 
-        initialiseWithPermissions()
+//        initialiseWithPermissions()
         maintenance!!.run()
     }
 

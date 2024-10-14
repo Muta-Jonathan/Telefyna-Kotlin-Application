@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import org.avventomedia.app.telefyna.Monitor
 
 class AutoStart : BroadcastReceiver() {
@@ -18,5 +19,6 @@ class AutoStart : BroadcastReceiver() {
             val mgr = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             mgr.set(AlarmManager.RTC, System.currentTimeMillis() + 10000, pendingIntent) // wait for 10 seconds
         }
+        Log.d("AutoStart", "Boot completed received")
     }
 }

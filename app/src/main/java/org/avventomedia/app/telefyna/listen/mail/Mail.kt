@@ -20,6 +20,7 @@ import javax.mail.BodyPart
 import javax.mail.Message
 import javax.mail.MessagingException
 import javax.mail.Session
+import javax.mail.internet.AddressException
 import javax.mail.internet.InternetAddress
 import javax.mail.internet.MimeBodyPart
 import javax.mail.internet.MimeMessage
@@ -50,19 +51,28 @@ class Mail(private val auditAlert: AuditAlert) {
     private fun createEmailMessage(receivers: Receivers, draft: Draft) {
         if (Utils.isValidEmail(draft.from)) {
             mailSession = Session.getDefaultInstance(emailProperties, null)
-            emailMessage = MimeMessage(mailSession)
-            emailMessage.setFrom(InternetAddress(draft.from, draft.from))
+            emailMessage = MimeMessage(mailSession).apply {
+                setFrom(InternetAddress(draft.from, draft.from))
 
-            receivers.emails.split("#").forEach { emailAdd ->
-                if (Utils.isValidEmail(emailAdd.trim())) {
-                    draft.bcc.add(InternetAddress(emailAdd.trim()))
+                // Process BCC recipients
+                receivers.emails.split("#").forEach { emailAdd ->
+                    val trimmedEmail = emailAdd.trim()
+                    if (Utils.isValidEmail(trimmedEmail)) {
+                        try {
+                            draft.bcc.add(InternetAddress(trimmedEmail))
+                        } catch (e: AddressException) {
+                            e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }
+                        }
+                    }
                 }
+
+                addRecipients(Message.RecipientType.BCC, draft.bcc.toTypedArray())
+                subject = draft.subject
+                setEmailBody(receivers, draft)
             }
-            emailMessage.addRecipients(Message.RecipientType.BCC, draft.bcc.toTypedArray())
-            emailMessage.subject = draft.subject
-            setEmailBody(receivers, draft)
         }
     }
+
 
     @Throws(MessagingException::class)
     private fun attach(attachment: String, draft: Draft): BodyPart {

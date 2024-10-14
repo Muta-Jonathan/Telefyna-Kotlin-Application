@@ -45,7 +45,7 @@ class AuditLog {
         EMAIL("Sending email: '%s' to: %s %s"),
         NO_INTERNET("%s");
 
-        fun getMessage(): String {
+        fun formatMessage(): String {
             return String.format("$message $SEPARATOR ")
         }
 

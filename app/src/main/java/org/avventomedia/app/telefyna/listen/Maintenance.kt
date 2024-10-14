@@ -40,7 +40,7 @@ class Maintenance {
             val defaultIndex = Monitor.instance!!.getFirstDefaultIndex()
             val playlist = Monitor.instance?.configuration?.playlists?.get(defaultIndex)
             playlist?.let { Monitor.instance!!.addPlayListByIndex(it) }
-            Monitor.instance!!.switchNow(defaultIndex, false)
+            Monitor.instance!!.switchNow(defaultIndex, false, Monitor.instance!!)
         } else {
             startedSlotsToday = HashMap()
             pendingIntents = HashMap()
@@ -162,9 +162,9 @@ class Maintenance {
             val slots = startedSlotsToday.keys.toList().sortedDescending()
             val currentPlaylist = startedSlotsToday[slots[0]]
             // isCurrentSlot should only be true here
-            Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true)
+            Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, Monitor.instance!!)
         } else { // Play first default
-            Monitor.instance?.let { Monitor.instance!!.switchNow(it.getFirstDefaultIndex(), false) }
+            Monitor.instance?.let { Monitor.instance!!.switchNow(it.getFirstDefaultIndex(), false, Monitor.instance!!) }
         }
     }
 
