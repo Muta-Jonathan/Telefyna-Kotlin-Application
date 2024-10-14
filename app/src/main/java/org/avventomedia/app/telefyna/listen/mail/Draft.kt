@@ -1,4 +1,4 @@
-package org.avventomedia.app.telefyna.listen.modal
+package org.avventomedia.app.telefyna.listen.mail
 
 import javax.mail.internet.InternetAddress
 

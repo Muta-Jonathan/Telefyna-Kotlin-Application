@@ -4,6 +4,9 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import org.apache.commons.io.FileUtils
+import org.avventomedia.app.telefyna.Monitor
+import org.avventomedia.app.telefyna.Utils
+import org.avventomedia.app.telefyna.listen.mail.SendEmail
 import java.io.File
 import java.io.IOException
 import java.nio.charset.StandardCharsets
@@ -25,7 +28,7 @@ class Logger {
             } else {
                 Log.i(event.name, message)
             }
-            val path = Monitor.instance.getAuditLogsFilePath(getToday())
+            val path = Monitor.instance?.getAuditLogsFilePath(getToday())
             val msg = String.format("%s %s: \n\t%s", getNow(), event.name, message)
             try {
                 FileUtils.writeStringToFile(File(path as String), msg.replace("<br>", ","), StandardCharsets.UTF_8, true)
@@ -40,10 +43,10 @@ class Logger {
         @RequiresApi(Build.VERSION_CODES.O)
         private fun emailAudit(event: AuditLog.Event, msg: String) {
             // email notification
-            val config = Monitor.instance.getConfiguration()
-            if (config != null && config.alerts?.isEnabled == true && (event.category == AuditLog.Event.Category.ADMIN || event.category == AuditLog.Event.Category.BROADCAST)) {
+            val config = Monitor.instance?.configuration
+            if (config != null && config.alerts?.isEnabled== true && (event.getCategory() == AuditLog.Event.Category.ADMIN || event.getCategory() == AuditLog.Event.Category.BROADCAST)) {
                 if (Utils.internetConnected()) {
-                    SendEmail().execute(AuditAlert(config.alerts, event, msg))
+                    SendEmail().execute(AuditAlert(config.alerts!!, event, msg))
                 } else {
                     log(AuditLog.Event.NO_INTERNET, "Sending emails failed, no internet connection")
                 }
@@ -55,25 +58,28 @@ class Logger {
         }
 
         fun getToday(): String {
-            return Monitor.instance.getDateFormat().format(Calendar.getInstance().time)
+            return Monitor.instance?.dateFormat?.format(Calendar.getInstance().time) ?: ""
         }
 
         fun getAuditsForNDays(days: Int): List<String> {
             val audits = mutableListOf<String>()
-            val auditDir = File(Monitor.instance.getAuditFilePath(""))
+            val auditDir = File(Monitor.instance?.getAuditFilePath("") ?: "")
             if (auditDir.exists()) {
                 val auditContents = auditDir.listFiles()
                 if (auditContents != null && auditContents.isNotEmpty()) {
                     for (i in 0 until days) {
                         val audit: String
-                        audit = if (i == 0) {
-                            Monitor.instance.getAuditLogsFilePath(getToday())
-                        } else {
+                        audit = if (i == 0) ({
+                            Monitor.instance?.getAuditLogsFilePath(getToday())
+                        }).toString() else ({
                             val d = Calendar.getInstance().apply {
                                 add(Calendar.DAY_OF_YEAR, -i) // - one day
                             }
-                            Monitor.instance.getAuditLogsFilePath(Monitor.instance.getDateFormat().format(d.time))
-                        }
+                            Monitor.instance?.dateFormat?.let {
+                                Monitor.instance!!.getAuditLogsFilePath(
+                                    it.format(d.time))
+                            }
+                        }).toString()
                         audits.add(audit)
                     }
                 }

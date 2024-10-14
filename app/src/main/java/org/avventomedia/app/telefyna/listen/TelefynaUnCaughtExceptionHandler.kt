@@ -1,5 +1,7 @@
 package org.avventomedia.app.telefyna.listen
 
+import org.avventomedia.app.telefyna.Monitor
+
 class TelefynaUnCaughtExceptionHandler : Thread.UncaughtExceptionHandler {
     companion object {
         const val CRASH = "crash"
@@ -7,6 +9,6 @@ class TelefynaUnCaughtExceptionHandler : Thread.UncaughtExceptionHandler {
     }
 
     override fun uncaughtException(thread: Thread, ex: Throwable) {
-        Monitor.instance.restartApp()
+        Monitor.instance?.restartApp()
     }
 }

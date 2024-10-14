@@ -15,4 +15,7 @@ data class Config(
     var wait: Int = 30,
     var alerts: Alerts? = null,
     var playlists: Array<Playlist>? = null
-)
+) {
+    val isAutomationDisabled: Boolean
+            get() = automationDisabled
+}

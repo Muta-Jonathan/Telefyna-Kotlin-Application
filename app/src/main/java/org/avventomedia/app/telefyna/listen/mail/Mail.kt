@@ -1,8 +1,9 @@
-package org.avventomedia.app.telefyna.listen.modal
+package org.avventomedia.app.telefyna.listen.mail
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import com.google.common.util.concurrent.Monitor
+import org.avventomedia.app.telefyna.Monitor
+import org.avventomedia.app.telefyna.Utils
 import org.avventomedia.app.telefyna.audit.AuditAlert
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
@@ -78,7 +79,7 @@ class Mail(private val auditAlert: AuditAlert) {
             emailMessage.setContent(draft.body, "text/html") // for a html email
         } else if (AuditLog.Event.MAINTENANCE == auditAlert.event) {
             val multipart = MimeMultipart()
-            val config = Monitor.instance.configFile
+            val config = Monitor.instance?.getConfigFile()
 
             if (receivers.isAttachConfig && File(config as String).exists()) {
                 multipart.addBodyPart(attach(config, draft))
@@ -113,27 +114,33 @@ class Mail(private val auditAlert: AuditAlert) {
             val draft = Draft().apply {
                 from = auditAlert.alerts.mailer!!.email.toString()
                 pass = auditAlert.alerts.mailer!!.pass.toString()
-                subject = String.format("%s %s %s Alert: %s",
-                    Logger.getToday(),
-                    Monitor.instance.configuration.name,
-                    auditAlert.event.getCategory(),
-                    auditAlert.event.name)
+                subject = Monitor.instance?.configuration?.let {
+                    String.format("%s %s %s Alert: %s",
+                        Logger.getToday(),
+                        it.name,
+                        auditAlert.event.getCategory(),
+                        auditAlert.event.name)
+                }.toString()
             }
 
             auditAlert.alerts.subscribers?.forEach { receivers ->
                 when {
                     AuditLog.Event.Category.ADMIN == auditAlert.event.getCategory() -> {
-                        draft.body = String.format("Dear admin,<br><br> %s <br><br><br>This is a %s system notification, please don't respond to it.<br><br>TelefynaBot",
-                            auditAlert.message,
-                            Monitor.instance.configuration.name)
+                        draft.body = Monitor.instance?.configuration?.let {
+                            String.format("Dear admin,<br><br> %s <br><br><br>This is a %s system notification, please don't respond to it.<br><br>TelefynaBot",
+                                auditAlert.message,
+                                it.name)
+                        }.toString()
                         draft.allowsAttachments = true
                         mailNow(receivers, draft)
                     }
 
                     AuditLog.Event.Category.BROADCAST == receivers.eventCategory && AuditLog.Event.Category.BROADCAST == auditAlert.event.getCategory() -> {
-                        draft.body = String.format("Dear broadcaster,<br><br> %s <br><br><br>This is a %s system notification, please don't respond to it.<br><br>TelefynaBot",
-                            auditAlert.message,
-                            Monitor.instance.configuration.name)
+                        draft.body = Monitor.instance?.configuration?.let {
+                            String.format("Dear broadcaster,<br><br> %s <br><br><br>This is a %s system notification, please don't respond to it.<br><br>TelefynaBot",
+                                auditAlert.message,
+                                it.name)
+                        }.toString()
                         mailNow(receivers, draft)
                     }
                 }
