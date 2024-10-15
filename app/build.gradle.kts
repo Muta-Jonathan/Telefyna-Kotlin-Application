@@ -63,6 +63,8 @@ dependencies {
     implementation (libs.androidx.media3.exoplayer.smoothstreaming)
     // For RTSP playback support with ExoPlayer
     implementation (libs.androidx.media3.exoplayer.rtsp)
+    // For loading data using librtmp
+    implementation(libs.androidx.media3.datasource.rtmp)
     implementation(libs.androidx.media3.exoplayer.dash)
     implementation(libs.androidx.media3.ui)
 

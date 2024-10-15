@@ -108,19 +108,21 @@ class Maintenance {
         val programs = mutableListOf<MediaItem>()
         playlist?.let {
             if (it.type == Playlist.Type.ONLINE) {
-//                if
-//                        (it.urlOrFolder?.contains("rtmp//") == true) {
-//                    val mediaSource = getRtmpSource(Uri.parse(it.urlOrFolder))
-//                    programs.add(mediaSource.mediaItem)
-//                } else
-//                {
-                
-                it.urlOrFolder?.let { url ->
-                    MediaItem.fromUri(url).let { mediaItem ->
-                        programs.add(mediaItem)
+                when {
+                    it.urlOrFolder?.contains("rtmp://") == true -> {
+                        // Handle RTMP with custom media source
+                        val mediaSource = getRtmpSource(Uri.parse(it.urlOrFolder))
+                        programs.add(mediaSource.mediaItem)
+                    }
+                    else -> {
+                        // Handle HLS, RTSP, and Smooth Streaming (default behavior)
+                        it.urlOrFolder?.let { url ->
+                            MediaItem.fromUri(url)?.let { mediaItem ->
+                                programs.add(mediaItem)
+                            }
+                        }
                     }
                 }
-//                }
             } else {
                 it.urlOrFolder?.split("#")?.forEachIndexed { i, _ ->
                     val pgms = mutableListOf<MediaItem>()
@@ -138,17 +140,14 @@ class Maintenance {
         return programs
     }
 
-//    // Support Rtmp stream "rtmp//server:port" or "rtmp//server"
-//    private fun getRtmpSource(uri: Uri): MediaSource {
-//        val rtmpDataSourceFactory = object : RtmpDataSource.Factory() {
-//            override fun createDataSource(): DataSource? {
-//                return null // You should provide an implementation here
-//            }
-//        }
-//        // This is the MediaSource representing the media to be played.
-//        return ProgressiveMediaSource.Factory(rtmpDataSourceFactory)
-//            .createMediaSource(MediaItem.fromUri(uri))
-//    }
+    // Support Rtmp stream "rtmp//server:port" or "rtmp//server"
+
+    @OptIn(UnstableApi::class)
+    private fun getRtmpSource(uri: Uri): MediaSource {
+        val rtmpDataSourceFactory = RtmpDataSource.Factory()
+        return ProgressiveMediaSource.Factory(rtmpDataSourceFactory)
+            .createMediaSource(MediaItem.fromUri(uri))
+    }
 
     @OptIn(UnstableApi::class)
     private fun schedulePlaylistAtStart(playlist: Playlist, index: Int, starts: MutableList<String>) {
