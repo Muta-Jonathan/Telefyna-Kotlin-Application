@@ -1,7 +1,9 @@
 package org.avventomedia.app.telefyna.listen.mail
 
 import android.os.Build
+import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
+import androidx.media3.common.util.UnstableApi
 import org.avventomedia.app.telefyna.Monitor
 import org.avventomedia.app.telefyna.Utils
 import org.avventomedia.app.telefyna.audit.AuditAlert
@@ -83,6 +85,7 @@ class Mail(private val auditAlert: AuditAlert) {
         }
     }
 
+    @OptIn(UnstableApi::class)
     @Throws(MessagingException::class)
     fun setEmailBody(receivers: Receivers, draft: Draft) {
         if (!receivers.isAttachConfig && receivers.attachAuditLog == 0) {
@@ -118,6 +121,7 @@ class Mail(private val auditAlert: AuditAlert) {
         }
     }
 
+    @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     fun sendEmail() {
         if (auditAlert.alerts.mailer != null) {

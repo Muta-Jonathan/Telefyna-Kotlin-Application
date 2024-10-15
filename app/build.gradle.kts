@@ -57,6 +57,12 @@ dependencies {
     implementation (libs.gson)
     // added Exoplayer
     implementation(libs.androidx.media3.exoplayer)
+    // For HLS playback support with ExoPlayer
+    implementation (libs.androidx.media3.exoplayer.hls)
+    // For SmoothStreaming playback support with ExoPlayer
+    implementation (libs.androidx.media3.exoplayer.smoothstreaming)
+    // For RTSP playback support with ExoPlayer
+    implementation (libs.androidx.media3.exoplayer.rtsp)
     implementation(libs.androidx.media3.exoplayer.dash)
     implementation(libs.androidx.media3.ui)
 

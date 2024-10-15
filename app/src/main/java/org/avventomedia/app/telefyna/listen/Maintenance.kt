@@ -31,6 +31,7 @@ class Maintenance {
     /**
      * Called when Telefyna is launched and every day at midnight
      */
+    @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     private fun triggerMaintenance() {
         cancelPendingIntents()
@@ -50,6 +51,7 @@ class Maintenance {
         }
     }
 
+    @OptIn(UnstableApi::class)
     fun cancelPendingIntents() {
         if (pendingIntents.isNotEmpty()) {
             for (intent in pendingIntents.values) { // TODO test
@@ -59,6 +61,7 @@ class Maintenance {
     }
 
     val maintenanceRunnable = object : Runnable {
+        @OptIn(UnstableApi::class)
         @RequiresApi(Build.VERSION_CODES.O)
         override fun run() {
             triggerMaintenance() // Your method call
@@ -67,6 +70,7 @@ class Maintenance {
     }
 
 
+    @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     fun run() {
         // This may cause a null pointer exception if config is not available and restarts it
@@ -77,6 +81,7 @@ class Maintenance {
         Monitor.instance?.maintenanceHandler?.postDelayed(maintenanceRunnable, getMillisToMaintenanceTime())
     }
 
+    @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     private fun schedule() {
         val config = Monitor.instance?.configuration
@@ -98,6 +103,7 @@ class Maintenance {
         }
     }
 
+    @OptIn(UnstableApi::class)
     fun retrievePrograms(playlist: Playlist?): List<MediaItem> {
         val programs = mutableListOf<MediaItem>()
         playlist?.let {
@@ -108,8 +114,12 @@ class Maintenance {
 //                    programs.add(mediaSource.mediaItem)
 //                } else
 //                {
-                    it.urlOrFolder?.let { it1 -> MediaItem.fromUri(it1) }
-                        ?.let { it2 -> programs.add(it2) }
+                
+                it.urlOrFolder?.let { url ->
+                    MediaItem.fromUri(url).let { mediaItem ->
+                        programs.add(mediaItem)
+                    }
+                }
 //                }
             } else {
                 it.urlOrFolder?.split("#")?.forEachIndexed { i, _ ->
@@ -140,6 +150,7 @@ class Maintenance {
 //            .createMediaSource(MediaItem.fromUri(uri))
 //    }
 
+    @OptIn(UnstableApi::class)
     private fun schedulePlaylistAtStart(playlist: Playlist, index: Int, starts: MutableList<String>) {
         // Was scheduled, remove existing playlist to reschedule a new later one
         val start = playlist.start
@@ -156,6 +167,7 @@ class Maintenance {
         }
     }
 
+    @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     private fun playCurrentSlot() {
         if (startedSlotsToday.isNotEmpty()) {
@@ -168,6 +180,7 @@ class Maintenance {
         }
     }
 
+    @OptIn(UnstableApi::class)
     private fun schedulePlayList(playlist: Playlist, index: Int) {
         val start = playlist.start ?: "default_start"
         if (playlist.isStarted()) {
@@ -180,6 +193,7 @@ class Maintenance {
         }
     }
 
+    @OptIn(UnstableApi::class)
     private fun schedule(intent: Intent, millis: Long, start: String, index: Int) {
         val alarmPendingIntent = PendingIntent.getBroadcast(Monitor.instance, index, intent, PendingIntent.FLAG_CANCEL_CURRENT)
         pendingIntents[start] = alarmPendingIntent
