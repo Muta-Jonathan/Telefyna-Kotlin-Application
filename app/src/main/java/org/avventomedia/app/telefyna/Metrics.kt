@@ -40,7 +40,7 @@ object Metrics {
         val metrics = StringBuilder()
         metrics.append("Network: ${Utils.logLocalIpAddresses().joinToString(",")}<br>")
         metrics.append(Utils.readUrl("https://ipinfo.io/json"))
-        metrics.append(Monitor.instance?.let { getFreeDiskSpace(it.getAuditFilePath("")) })
+        metrics.append(Monitor.instance?.let { getFreeDiskSpace(it.getAuditFilePath(Monitor.instance!!,"")) })
         metrics.append(Monitor.instance?.let { getFreeDiskSpace(it.getProgramsFolderPath(false)) })
         metrics.append(Monitor.instance?.let { getFreeDiskSpace(it.getProgramsFolderPath(true)) })
         metrics.append(getFreeMemory())

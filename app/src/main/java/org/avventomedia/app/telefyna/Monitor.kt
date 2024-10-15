@@ -310,27 +310,27 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun getRestartFile(): File {
-        return File(getAuditFilePath("restart.txt"))
+        return File(getAuditFilePath(this,"restart.txt"))
     }
 
     private fun getRebootFile(): File {
-        return File(getAuditFilePath("reboot.txt"))
+        return File(getAuditFilePath(this,"reboot.txt"))
     }
 
     private fun getAuditConfigFile(): File {
-        return File(getAuditFilePath("config.json"))
+        return File(getAuditFilePath(this,"config.json"))
     }
 
     private fun getBackupConfigFile(): File {
-        return File(getAuditFilePath("backupConfig.txt"))
+        return File(getAuditFilePath(this,"backupConfig.txt"))
     }
 
     private fun getBackupConfigResetFile(): File {
-        return File(getAuditFilePath("backupConfigReset.txt"))
+        return File(getAuditFilePath(this,"backupConfigReset.txt"))
     }
 
     private fun getReInitializerFile(): File {
-        return File(getAuditFilePath("init.txt"))
+        return File(getAuditFilePath(this,"init.txt"))
     }
 
     fun getBumperDirectory(useExternalStorage: Boolean): String {
@@ -353,12 +353,26 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return "${getProgramsFolderPath(false)}${File.separator}config.json"
     }
 
-    fun getAuditFilePath(name: String): String {
-        return "${Environment.getExternalStorageDirectory().absolutePath}/telefynaAudit/$name"
+    fun getAuditFilePath(context: Context, name: String): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // For API 30 and above, use getExternalFilesDir() for Scoped Storage
+            val directory = File(context.getExternalFilesDir(null), "telefynaAudit")
+            if (!directory.exists()) {
+                directory.mkdirs() // Create the directory if it doesn't exist
+            }
+            "${directory.absolutePath}/$name"
+        } else {
+            // For API 29 and lower, use getExternalStorageDirectory() (deprecated)
+            val directory = File(Environment.getExternalStorageDirectory(), "telefynaAudit")
+            if (!directory.exists()) {
+                directory.mkdirs() // Create the directory if it doesn't exist
+            }
+            "${directory.absolutePath}/$name"
+        }
     }
 
     fun getAuditLogsFilePath(name: String): String {
-        return getAuditFilePath("${name}${AuditLog.ENDPOINT}")
+        return getAuditFilePath(this,"${name}${AuditLog.ENDPOINT}")
     }
 
     fun initialise() {

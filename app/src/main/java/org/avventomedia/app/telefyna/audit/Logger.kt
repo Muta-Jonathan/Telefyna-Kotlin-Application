@@ -69,7 +69,7 @@ class Logger {
         @OptIn(UnstableApi::class)
         fun getAuditsForNDays(days: Int): List<String> {
             val audits = mutableListOf<String>()
-            val auditDir = File(Monitor.instance?.getAuditFilePath("") ?: "")
+            val auditDir = File(Monitor.instance?.getAuditFilePath(Monitor.instance!!,"") ?: "")
             if (auditDir.exists()) {
                 val auditContents = auditDir.listFiles()
                 if (auditContents != null && auditContents.isNotEmpty()) {
