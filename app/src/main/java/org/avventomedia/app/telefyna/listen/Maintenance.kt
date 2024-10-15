@@ -141,7 +141,6 @@ class Maintenance {
     }
 
     // Support Rtmp stream "rtmp//server:port" or "rtmp//server"
-
     @OptIn(UnstableApi::class)
     private fun getRtmpSource(uri: Uri): MediaSource {
         val rtmpDataSourceFactory = RtmpDataSource.Factory()
