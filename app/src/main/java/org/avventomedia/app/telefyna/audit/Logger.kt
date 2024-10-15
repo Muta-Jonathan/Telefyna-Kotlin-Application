@@ -2,7 +2,9 @@ package org.avventomedia.app.telefyna.audit
 
 import android.os.Build
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
+import androidx.media3.common.util.UnstableApi
 import org.apache.commons.io.FileUtils
 import org.avventomedia.app.telefyna.Monitor
 import org.avventomedia.app.telefyna.Utils
@@ -21,6 +23,7 @@ class Logger {
         /*
          * TODO mail, save to file
          */
+        @OptIn(UnstableApi::class)
         fun log(event: AuditLog.Event, vararg params: Any) {
             val message = String.format(event.message, *params)
             if (event == AuditLog.Event.ERROR) {
@@ -40,6 +43,7 @@ class Logger {
             }
         }
 
+        @OptIn(UnstableApi::class)
         @RequiresApi(Build.VERSION_CODES.O)
         private fun emailAudit(event: AuditLog.Event, msg: String) {
             // email notification
@@ -57,10 +61,12 @@ class Logger {
             return datetimeFormat.format(Calendar.getInstance().time)
         }
 
+        @OptIn(UnstableApi::class)
         fun getToday(): String {
             return Monitor.instance?.dateFormat?.format(Calendar.getInstance().time) ?: ""
         }
 
+        @OptIn(UnstableApi::class)
         fun getAuditsForNDays(days: Int): List<String> {
             val audits = mutableListOf<String>()
             val auditDir = File(Monitor.instance?.getAuditFilePath("") ?: "")

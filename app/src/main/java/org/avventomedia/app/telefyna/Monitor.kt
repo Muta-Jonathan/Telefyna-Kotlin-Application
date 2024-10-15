@@ -13,6 +13,7 @@ import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.net.Uri
+import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -75,6 +76,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val PLAYLIST_LAST_PLAYED = "PLAYLIST_LAST_PLAYED"
         private const val PLAYLIST_SEEK_TO = "PLAYLIST_SEEK_TO"
         private const val PLAYLIST_PLAY_FORMAT = "%s-%d"
+        private const val REQUEST_CODE_PERMISSIONS = 123
+        private const val PERMISSION_REQUEST_CODE = 100
+        private const val MANAGE_STORAGE_REQUEST_CODE = 101
         var instance: Monitor? = null // whoever for player am using media3
     }
 
@@ -273,7 +277,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // allow network etc actions since telefyna depends on all of these
         StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().permitAll().build())
 
-//        initialiseWithPermissions()
+        // Initialize permissions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            initialiseWithPermissions()
+        }
         maintenance!!.run()
     }
 
@@ -812,45 +819,84 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     @RequiresApi(Build.VERSION_CODES.N)
     private fun initialiseWithPermissions() {
-        while (missingPermissions().isNotEmpty()) {
-            askForPermissions(missingPermissions())
+        val permissionsToRequest = missingPermissions()
+        if (permissionsToRequest.isNotEmpty()) {
+            askForPermissions(permissionsToRequest)
         }
     }
 
     private fun askForPermissions(permissions: List<String>) {
-        instance?.let { ActivityCompat.requestPermissions(it, permissions.toTypedArray(), PackageManager.PERMISSION_GRANTED) }
+        instance?.let {
+            if (permissions.isNotEmpty()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && permissions.contains(Manifest.permission.MANAGE_EXTERNAL_STORAGE)) {
+                    // Redirect to system settings for `MANAGE_EXTERNAL_STORAGE`
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    intent.data = Uri.fromParts("package", it.packageName, null)
+                    it.startActivityForResult(intent, MANAGE_STORAGE_REQUEST_CODE)
+                } else {
+                    // Request permissions normally
+                    ActivityCompat.requestPermissions(it, permissions.toTypedArray(), PERMISSION_REQUEST_CODE)
+                }
+            }
+        }
     }
 
     private fun missingPermissions(): List<String> {
-        val allPermissions = listOf(
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.RECEIVE_BOOT_COMPLETED,
-            Manifest.permission.INTERNET,
-            Manifest.permission.ACCESS_NETWORK_STATE
-        )
+        val requiredPermissions = mutableListOf<String>()
 
-        val missingPermissions = mutableListOf<String>()
-        for (permission in allPermissions) {
-            if (instance?.let { ContextCompat.checkSelfPermission(it, permission) } != PackageManager.PERMISSION_GRANTED) {
-                missingPermissions.add(permission)
-            }
-        }
-        return missingPermissions
-    }
-
-
-    @RequiresApi(Build.VERSION_CODES.N)
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        if (permissions.isNotEmpty()) {
-            for (i in grantResults.indices) {
-                if (grantResults[i] != requestCode) {
-                    initialiseWithPermissions()
-                    break
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            // For Android 10 and below (API 30 and lower)
+            requiredPermissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            requiredPermissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            // For Android 11 (API 30) and above
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // For Android 12+ (API 31+)
+                if (!Environment.isExternalStorageManager()) {
+                    requiredPermissions.add(Manifest.permission.MANAGE_EXTERNAL_STORAGE)
                 }
             }
-        } else {
-            super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        }
+
+        requiredPermissions.add(Manifest.permission.RECEIVE_BOOT_COMPLETED)
+        requiredPermissions.add(Manifest.permission.INTERNET)
+        requiredPermissions.add(Manifest.permission.ACCESS_NETWORK_STATE)
+
+        // Filter missing permissions
+        return requiredPermissions.filter {
+            instance?.let { ctx ->
+                ContextCompat.checkSelfPermission(ctx, it)
+            } != PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    /**
+     * Handle the result of the permission requests.
+     */
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            val deniedPermissions = mutableListOf<String>()
+
+            // Iterate through grantResults to check which permissions were denied
+            grantResults.forEachIndexed { index, result ->
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    deniedPermissions.add(permissions[index])
+                }
+            }
+
+            if (deniedPermissions.isNotEmpty()) {
+                // Optionally, show a dialog explaining why the permissions are needed
+                // and then request them again or guide the user to settings
+
+                // For simplicity, re-request the denied permissions
+                askForPermissions(deniedPermissions)
+            }
         }
     }
 

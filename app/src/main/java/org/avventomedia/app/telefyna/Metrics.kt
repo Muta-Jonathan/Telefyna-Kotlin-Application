@@ -1,13 +1,17 @@
 package org.avventomedia.app.telefyna
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.Context
 import android.os.StatFs
 import android.os.SystemClock
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import java.io.File
 
 object Metrics {
 
+    @SuppressLint("DefaultLocale")
     private fun getFreeDiskSpace(volume: String): String {
         val path = File(volume)
         return if (path.exists()) {
@@ -18,6 +22,8 @@ object Metrics {
         }
     }
 
+    @SuppressLint("DefaultLocale")
+    @OptIn(UnstableApi::class)
     private fun getFreeMemory(): String {
         val mi = ActivityManager.MemoryInfo()
         val activityManager = Monitor.instance?.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -29,6 +35,7 @@ object Metrics {
         return String.format("UpTime: %s", Utils.formatDuration(SystemClock.uptimeMillis()))
     }
 
+    @OptIn(UnstableApi::class)
     fun retrieve(): String {
         val metrics = StringBuilder()
         metrics.append("Network: ${Utils.logLocalIpAddresses().joinToString(",")}<br>")
