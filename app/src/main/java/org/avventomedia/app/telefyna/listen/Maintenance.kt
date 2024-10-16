@@ -11,7 +11,6 @@ import androidx.annotation.RequiresApi
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.rtmp.RtmpDataSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -21,9 +20,14 @@ import org.avventomedia.app.telefyna.Utils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
 import org.avventomedia.app.telefyna.modal.Playlist
+import org.avventomedia.app.telefyna.player.SrtDataSourceFactory
+import org.avventomedia.app.telefyna.player.TsOnlyExtractorFactory
 import java.util.Calendar
 
 class Maintenance {
+    companion object {
+        private const val QUERY_PARAM_PASSCODE = "passcode"
+    }
 
     private var startedSlotsToday: MutableMap<String, CurrentPlaylist> = HashMap()
     private var pendingIntents: MutableMap<String, PendingIntent> = HashMap()
@@ -114,6 +118,25 @@ class Maintenance {
                         val mediaSource = getRtmpSource(Uri.parse(it.urlOrFolder))
                         programs.add(mediaSource.mediaItem)
                     }
+                    it.urlOrFolder?.contains("srt://") == true -> {
+                        // Handle SRT
+                        val srtUrl = Uri.parse(it.urlOrFolder)
+                        val passcode = srtUrl.getQueryParameter(QUERY_PARAM_PASSCODE)
+
+                        // Create MediaItem with custom cache key (passcode if present)
+                        val mediaItemBuilder = MediaItem.Builder()
+                            .setUri(srtUrl)
+                        // Set custom cache key if passcode is present
+                        if (!passcode.isNullOrEmpty()) {
+                            mediaItemBuilder.setCustomCacheKey(passcode) // Use passcode as custom cache key
+                        }
+
+                        val mediaItem = mediaItemBuilder.build()
+
+                        // Create SRT source and add to programs
+                        val mediaSource = getSrtSource(mediaItem)
+                        programs.add(mediaSource.mediaItem)
+                    }
                     else -> {
                         // Handle HLS, RTSP, and Smooth Streaming (default behavior)
                         it.urlOrFolder?.let { url ->
@@ -146,6 +169,13 @@ class Maintenance {
         val rtmpDataSourceFactory = RtmpDataSource.Factory()
         return ProgressiveMediaSource.Factory(rtmpDataSourceFactory)
             .createMediaSource(MediaItem.fromUri(uri))
+    }
+
+    // Support srt stream "srt//server:port" or "srt//server"
+    @OptIn(UnstableApi::class)
+    private fun getSrtSource(mediaItem: MediaItem): MediaSource {
+       return ProgressiveMediaSource.Factory(SrtDataSourceFactory(), TsOnlyExtractorFactory())
+           .createMediaSource(mediaItem)
     }
 
     @OptIn(UnstableApi::class)
@@ -193,7 +223,8 @@ class Maintenance {
 
     @OptIn(UnstableApi::class)
     private fun schedule(intent: Intent, millis: Long, start: String, index: Int) {
-        val alarmPendingIntent = PendingIntent.getBroadcast(Monitor.instance, index, intent, PendingIntent.FLAG_CANCEL_CURRENT)
+        val alarmPendingIntent = PendingIntent.getBroadcast(Monitor.instance, index, intent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         pendingIntents[start] = alarmPendingIntent
         Monitor.instance?.alarmManager?.setExact(AlarmManager.RTC_WAKEUP, millis, alarmPendingIntent)
     }

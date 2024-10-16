@@ -13,6 +13,7 @@ class AuditLog {
         KEY_PRESS("%s has been pressed"),
         CONFIGURATION("Initialized configurations"),
         MAINTENANCE("Ran maintenance"),
+        CONNECTING("Connecting"),
         METRICS("%s"),
         ERROR("%s"),
         CACHE_NOW_PLAYING_RESUME("Playlist: %s will next be resuming after program: %s at: %s"),

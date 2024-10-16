@@ -3,11 +3,15 @@ package org.avventomedia.app.telefyna.player
 import android.content.Context
 import android.os.Handler
 import androidx.annotation.Nullable
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 
-class TelefynaCodecRender(
+@UnstableApi
+class TelefynaCodecRender @OptIn(UnstableApi::class) constructor
+    (
     context: Context,
     mediaCodecSelector: MediaCodecSelector,
     allowedJoiningTimeMs: Long,
