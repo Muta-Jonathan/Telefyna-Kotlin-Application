@@ -1,6 +1,9 @@
 package org.avventomedia.app.telefyna
 
 import android.Manifest
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.Notification
@@ -17,6 +20,7 @@ import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.FileObserver
 import android.os.Handler
 import android.os.StrictMode
 import android.view.KeyEvent
@@ -115,6 +119,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var fillingForLackOfInternet = false
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
+
+    private var fileObserver: FileObserver? = null
 
     var dateFormat: SimpleDateFormat? = null
         private set
@@ -282,6 +288,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             initialiseWithPermissions()
         }
         maintenance!!.run()
+
+        // Initialize real-time file observer for config.json
+        observeConfigFile()
     }
 
     /**
@@ -332,6 +341,39 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun getReInitializerFile(): File {
         return File(getAuditFilePath(this,"init.txt"))
     }
+
+    private fun observeConfigFile() {
+        val configFilePath = getConfigFile()
+        val configFile = File(configFilePath)
+        if (configFile.exists()) {
+            fileObserver = object : FileObserver(configFilePath, MODIFY) {
+                override fun onEvent(event: Int, path: String?) {
+                    if (event == MODIFY) {
+                        runOnUiThread {
+                            handleConfigFileChange(configFile)
+                        }
+                    }
+                }
+            }
+            fileObserver?.startWatching()
+        } else {
+            Logger.log(AuditLog.Event.ERROR, "Config file does not exist: $configFilePath")
+        }
+    }
+
+    private fun handleConfigFileChange(file: File) {
+        Logger.log(AuditLog.Event.FILE_CHANGED, "Config file modified: ${file.path}")
+        try {
+            val content = file.readText()
+            // Parse and handle the new configuration
+            configuration = Gson().fromJson(content, Config::class.java)
+            Logger.log(AuditLog.Event.CONFIG_UPDATED, "New config loaded: $content")
+            // Add any additional handling logic, e.g., updating the UI or reloading data
+        } catch (e: IOException) {
+            Logger.log(AuditLog.Event.ERROR, "Failed to read config file: ${e.message}")
+        }
+    }
+
 
     fun getBumperDirectory(useExternalStorage: Boolean): String {
         return "${getProgramsFolderPath(useExternalStorage)}${File.separator}bumper"
@@ -496,6 +538,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         player = buildPlayer(context) // TODO: test
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
+                        val crossfadeDuration = 2000L // Fade duration in milliseconds
 
                         if (modifiedOffset > 0) {
                             Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
@@ -591,15 +634,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
                                 // Add intro bumpers
                                 val currentBumpers = mutableListOf<MediaItem>().apply {
+                                    addAll(generalBumpersIntro)
                                     addAll(playListIntroBumpers)
                                     addAll(specialBumpersIntro)
-                                    addAll(generalBumpersIntro)
                                 }
                                 programItems.addAll(0, currentBumpers)
 
                                 // Add outro bumpers
-                                programItems.addAll(playListOutroBumpers)
                                 programItems.addAll(specialBumpersOutro)
+                                programItems.addAll(playListOutroBumpers)
                                 programItems.addAll(generalBumpersOutro)
                             }
 
@@ -626,11 +669,45 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             }
                         }
 
+                        // Apply crossfade transition
+                        if (previousPlayer != null) {
+                            previousPlayer?.volume = 1f
+                            val fadeOutAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
+                                duration = crossfadeDuration
+                                addUpdateListener {
+                                    previousPlayer?.volume = it.animatedValue as Float
+                                }
+                            }
+
+                            fadeOutAnimator.addListener(object : AnimatorListenerAdapter() {
+                                override fun onAnimationEnd(animation: Animator) {
+                                    previousPlayer?.stop()
+                                    previousPlayer?.release()
+                                }
+                            })
+
+                            fadeOutAnimator.start()
+                            Logger.log(AuditLog.Event.FADE_STARTED, "fade out transition played")
+                        }
+
                         val current = getPlayerView(true).player
                         instance?.let { current?.removeListener(it) }
+                        // Load the new media items
                         programItems.let { player!!.setMediaItems(it) }
                         nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
                         player!!.prepare()
+
+                        player!!.volume = 0f
+                        val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                            duration = crossfadeDuration
+                            addUpdateListener {
+                                player!!.volume = it.animatedValue as Float
+                            }
+                        }
+
+                        fadeInAnimator.start()
+                        Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
+
                         instance?.let { player!!.addListener(it) }
                         player!!.playWhenReady = true
                         nowProgramItem?.let { programItems[it] }
@@ -815,6 +892,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onDestroy() {
         super.onDestroy()
         shutDownHook()
+        fileObserver?.stopWatching()
     }
 
     private fun getLastModifiedFor(index: Int): Long {

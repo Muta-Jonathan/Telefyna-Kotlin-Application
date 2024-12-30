@@ -41,6 +41,11 @@ class AuditLog {
         DISPLAY_NEWS_OFF("Turning OFF news/info ticker"),
         LOWER_THIRD_ON("Displaying %s lower third"),
         LOWER_THIRD_OFF("Turning OFF lower third"),
+        FILE_CHANGED("Modified Config file %s"),
+        CONFIG_UPDATED("New config loaded %s"),
+        FADE_STARTED("Fade started %s"),
+        FADE_STOPPED("Fade stopped %s"),
+
 
         // system
         EMAIL("Sending email: '%s' to: %s %s"),
@@ -61,7 +66,8 @@ class AuditLog {
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,
                 PLAYLIST_EMPTY_PLAY, PLAYLIST_MODIFIED, PLAYLIST_ITEM_CHANGE,
                 PLAYLIST_COMPLETED, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
-                DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF
+                DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
+                FILE_CHANGED, CONFIG_UPDATED
             )
 
             return when {
