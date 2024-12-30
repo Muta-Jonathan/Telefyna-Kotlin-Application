@@ -647,11 +647,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             }
 
                             if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
-                                val seek = programItems?.let {
-                                    seekImmediateNonCompletedSlot(currentPlaylist!!,
-                                        it
-                                    )
-                                }
+                                val seek = seekImmediateNonCompletedSlot(currentPlaylist!!,
+                                    programItems
+                                )
                                 if (seek != null) {
                                     nowProgramItem = if (seek.program == (programItems?.size)?.minus(
                                             1
