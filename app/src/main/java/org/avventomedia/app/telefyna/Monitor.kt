@@ -26,10 +26,7 @@ import android.os.StrictMode
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.annotation.OptIn
@@ -268,6 +265,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return String.format(PLAYLIST_PLAY_FORMAT, PLAYLIST_LAST_PLAYED, index)
     }
 
+    @SuppressLint("MissingInflatedId")
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -383,7 +381,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             Logger.log(AuditLog.Event.ERROR, "Failed to read config file: ${e.message}")
         }
     }
-
 
     fun getBumperDirectory(useExternalStorage: Boolean): String {
         return "${getProgramsFolderPath(useExternalStorage)}${File.separator}bumper"
@@ -1021,7 +1018,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     @RequiresApi(Build.VERSION_CODES.M)
     private fun triggerGraphics(nowPosition: Long) {
         hideLogo()
-        //hideTicker()
+        // Always check initialization before hiding
+        if (::tickerRecyclerView.isInitialized) {
+            hideTicker()
+        }
         hideLowerThird()
         val graphics = currentPlaylist?.graphics
         graphics?.let {
@@ -1050,7 +1050,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 if (messages.isNotEmpty()) {
                     initTickers(newsData)
                     newsData.getStartsArray().forEach { s ->
-                        val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
+                        val start = Math.round((s ?: 1.0) * 60 * 1000) // s is in minutes, send in ms
                         if (start >= nowPosition) {
                             instance?.handler?.postDelayed({
                                 showTicker(newsData)
@@ -1077,6 +1077,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             if (it.visibility != View.GONE) {
                 it.visibility = View.GONE
                 Logger.log(AuditLog.Event.DISPLAY_NEWS_OFF)
+                Logger.log(AuditLog.Event.DISPLAY_TIME_OFF)
             }
         }
     }
@@ -1126,24 +1127,23 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         tickerRecyclerView = findViewById(R.id.tickerRecyclerView)
         tickerRecyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         val tickerItems = listOf(
-            TickerItem(isImage = false, text = news.messages)
+            TickerItem(text = news.messages)
         )
         // Initialize the adapter with ticker items
         tickerAdapter = TickerAdapter(
             tickerItems,
             displacement = news.speed.getDisplacement(),
-            backgroundColor = getColor(android.R.color.holo_blue_dark),
-            textColor = getColor(android.R.color.white)
         )
         tickerRecyclerView.adapter = tickerAdapter
-
-//        for (message in news.messages) tickerView.addChildView(tickerView(message))
     }
 
      private fun showTicker(news: News) {
-         news.messages?.let { Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, it) }
-//        tickerView.showTickers() // TODO: add time run in context
-        tickerRecyclerView.visibility ?: View.VISIBLE
+         news.messages?.let {
+             Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, it)
+             Logger.log(AuditLog.Event.DISPLAY_TIME_ON, it)
+         }
+
+        tickerRecyclerView.visibility = View.VISIBLE
     }
 
     private fun showLogo(logoPosition: Graphics.LogoPosition?) {
@@ -1164,18 +1164,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             logoView.visibility = View.VISIBLE
         }
     }
-
-//    @RequiresApi(Build.VERSION_CODES.M)
-//    private fun tickerView(message: String): TextView {
-//        val tickerView = TextView(instance)
-//        tickerView.layoutParams = LinearLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
-//        tickerView.text = message
-//        tickerView.textSize = resources.getDimension(R.dimen.tickerFontSize)
-//        tickerView.setBackgroundColor(getColor(R.color.trans))
-//        //tickerView.setTextColor(Monitor.instance?.let { ContextCompat.getColor(it, android.R.color.white) })
-//        //tickerView.setPadding(100, 2, 100, 2)
-//        return tickerView
-//    }
 
     private fun regenerateConfiguration(resetSeekTo: Boolean): Config? {
         val config = configuration

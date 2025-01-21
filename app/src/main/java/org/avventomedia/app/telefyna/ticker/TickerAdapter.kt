@@ -5,22 +5,20 @@ import android.os.Build
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
 import android.widget.TextView
+import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
+import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.RecyclerView
 import org.avventomedia.app.telefyna.R
 
 class TickerAdapter(
     private val items: List<TickerItem>,
     private val displacement: Int, // Speed or displacement for scrolling
-    private val backgroundColor: Int = TickerDefaults.DEFAULT_BACKGROUND_COLOR,
-    private val textColor: Int = TickerDefaults.DEFAULT_TEXT_COLOR
 ) : RecyclerView.Adapter<TickerAdapter.TickerViewHolder>() {
 
     inner class TickerViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val tickerText: TextView = itemView.findViewById(R.id.tickerText)
-        val tickerImage: ImageView = itemView.findViewById(R.id.tickerImage)
     }
 
     @SuppressLint("ResourceAsColor")
@@ -31,36 +29,23 @@ class TickerAdapter(
         }
     }
 
+    @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.M)
     override fun onBindViewHolder(holder: TickerViewHolder, position: Int) {
-        val item = items[position]
+        val tickerItem = items[position]
+        val textView = holder.tickerText
 
-        if (item.isImage) {
-            holder.tickerImage.visibility = View.VISIBLE
-            holder.tickerText.visibility = View.GONE
-            item.imageResId?.let { holder.tickerImage.setImageResource(it) }
-        } else {
-            holder.tickerImage.visibility = View.GONE
-            holder.tickerText.visibility = View.VISIBLE
-            holder.tickerText.text = item.text
-            // Apply displacement for scrolling effect (if needed)
-            holder.tickerText.translationX = (-displacement * position).toFloat()
-            // Start the marquee animation
-            holder.tickerText.isSelected = true // This triggers the marquee
-        }
+        textView.visibility = View.VISIBLE
+        holder.tickerText.text = tickerItem.text
+        // Apply displacement for scrolling effect (if needed)
+        holder.tickerText.translationX = (-displacement * position).toFloat()
+        // Start the marquee animation
+        holder.tickerText.isSelected = true // This triggers the marquee
     }
 
     override fun getItemCount(): Int = items.size
 }
 
 data class TickerItem(
-    val isImage: Boolean,       // True if this item is an image
-    val text: String? = null,   // The text to display (if applicable)
-    val imageResId: Int? = null // The resource ID of the image (if applicable)
+    val text: String? = null,
 )
-
-object TickerDefaults {
-    const val DEFAULT_BACKGROUND_COLOR = android.R.color.holo_blue_dark // Default background color
-    const val DEFAULT_TEXT_COLOR = android.R.color.white
-}
-

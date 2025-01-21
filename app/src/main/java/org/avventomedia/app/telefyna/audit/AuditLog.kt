@@ -39,6 +39,8 @@ class AuditLog {
         DISPLAY_LOGO_ON("Turning ON Logo at the %s"),
         DISPLAY_NEWS_ON("Displaying news/info ticker with messages: %s"),
         DISPLAY_NEWS_OFF("Turning OFF news/info ticker"),
+        DISPLAY_TIME_ON("Displaying time on ticker"),
+        DISPLAY_TIME_OFF("Turning OFF time on ticker"),
         LOWER_THIRD_ON("Displaying %s lower third"),
         LOWER_THIRD_OFF("Turning OFF lower third"),
         FILE_CHANGED("Modified Config file %s"),
