@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/black"
+    >
+    <!-- White Section -->
+    <TextView
+        android:id="@+id/yellowSection"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_marginStart="@dimen/tvGraphicsPadding"
+        android:background="@android:color/white"
+        android:paddingStart="5dp"
+        android:paddingBottom="2dp"
+        tools:ignore="RtlSymmetry" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:id="@+id/scrollTextImageSection"
+        android:gravity="center_vertical"
+        android:layout_marginStart="1dp"
+        android:layout_marginEnd="130dp"
+        android:layout_toEndOf="@id/yellowSection"
+        tools:ignore="UseCompoundDrawables">
+
+        <!-- Image for the ticker item -->
+        <ImageView
+            android:id="@+id/tickerImage"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="8dp"
+            android:contentDescription="@string/ticker_image_description" />
+
+        <!-- Text for the ticker item -->
+        <TextView
+            android:id="@+id/tickerText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textColor="@android:color/white"
+            android:text="@string/ticker_scroll_text"
+            android:ellipsize="marquee"
+            android:marqueeRepeatLimit="marquee_forever"
+            android:background="@drawable/radial_gradient_background"
+            android:singleLine="true" />
+    </LinearLayout>
+    <!-- Time Section -->
+    <TextView
+        android:id="@+id/timeSection"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="-145dp"
+        android:layout_toEndOf="@id/scrollTextImageSection"
+        android:background="@drawable/time_section_background"
+        android:paddingStart="8dp"
+        android:paddingEnd="5dp"
+        android:paddingBottom="1.8dp"
+        android:text="19:44:58"
+        android:textColor="#0076aa"
+        android:textStyle="bold"
+        android:textSize="14sp" />
+</RelativeLayout>

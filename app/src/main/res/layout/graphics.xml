@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:keepScreenOn="true"
@@ -9,9 +10,10 @@
         android:id="@+id/topLogo"
         android:layout_width="@dimen/tvLogoWidth"
         android:layout_height="@dimen/tvLogoHeight"
-        android:paddingRight="@dimen/tvLogoPadding"
-        android:layout_alignParentRight="true"
-        android:visibility="gone" />
+        android:paddingEnd="@dimen/tvLogoPadding"
+        android:layout_alignParentEnd="true"
+        android:visibility="gone"
+        tools:ignore="RtlSymmetry" />
 
     <VideoView
         android:id="@+id/lowerThird"
@@ -28,14 +30,24 @@
 <!--        android:layout_marginBottom="@dimen/tvGraphicsPadding"-->
 <!--        android:visibility="gone"/>-->
 
+    <!-- RecyclerView for the ticker -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/tickerRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="@dimen/tvLowerThirdPadding"
+        android:visibility="visible" />
+
     <ImageView
         android:id="@+id/bottomLogo"
         android:layout_width="@dimen/tvLogoWidth"
         android:layout_height="@dimen/tvLogoHeight"
-        android:paddingRight="@dimen/tvLogoPadding"
+        android:paddingEnd="@dimen/tvLogoPadding"
         android:layout_alignParentBottom="true"
-        android:layout_alignParentRight="true"
-        android:visibility="gone" />
-
+        android:layout_alignParentEnd="true"
+        android:visibility="gone"
+        tools:ignore="RtlSymmetry" />
 
 </RelativeLayout>

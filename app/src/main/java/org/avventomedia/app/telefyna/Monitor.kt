@@ -26,7 +26,11 @@ import android.os.StrictMode
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
 import android.widget.VideoView
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
@@ -42,6 +46,8 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import org.apache.commons.lang3.StringUtils
@@ -52,9 +58,12 @@ import org.avventomedia.app.telefyna.listen.TelefynaUnCaughtExceptionHandler
 import org.avventomedia.app.telefyna.modal.Config
 import org.avventomedia.app.telefyna.modal.Graphics
 import org.avventomedia.app.telefyna.modal.LowerThird
+import org.avventomedia.app.telefyna.modal.News
 import org.avventomedia.app.telefyna.modal.Playlist
 import org.avventomedia.app.telefyna.modal.Seek
 import org.avventomedia.app.telefyna.player.TelefynaRenderersFactory
+import org.avventomedia.app.telefyna.ticker.TickerAdapter
+import org.avventomedia.app.telefyna.ticker.TickerItem
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
@@ -110,7 +119,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var currentPlaylist: Playlist? = null
     private var playlistByIndex: MutableList<Playlist> = mutableListOf()
     private var programItems: MutableList<MediaItem> = mutableListOf()
-//    private var tickerView: TickerView? = null
+    private lateinit var tickerRecyclerView: RecyclerView
+    private lateinit var tickerAdapter: TickerAdapter
     private var lowerThirdView: VideoView? = null
 
     private var lowerThirdLoop = 1
@@ -275,11 +285,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         maintenance = Maintenance()
         maintenanceHandler = Handler()
         handler = Handler()
-        sharedPreferences = getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        sharedPreferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
 
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
 
-        alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
         // allow network etc actions since telefyna depends on all of these
         StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().permitAll().build())
 
@@ -505,13 +515,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             nowPlayingIndex = index
             currentPlaylist = playlist
             programItems = maintenance?.retrievePrograms(currentPlaylist) as MutableList<MediaItem>
-            Monitor.instance?.handler?.removeCallbacksAndMessages(null)
+            instance?.handler?.removeCallbacksAndMessages(null)
             val firstDefaultIndex = getFirstDefaultIndex()
             val secondDefaultIndex = getSecondDefaultIndex()
 
             if (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
                 (configuration?.wait)?.times(1000L)?.let {
-                    Monitor.instance?.handler?.postDelayed({
+                    instance?.handler?.postDelayed({
                         if (Utils.internetConnected()) {
                             switchNow(nowPlayingIndex!!, isCurrentSlot, context)
                         } else {
@@ -884,6 +894,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun shutDownHook() {
+        player?.release()
         Logger.log(AuditLog.Event.HEARTBEAT, "OFF")
     }
 
@@ -922,7 +933,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     // Redirect to system settings for `MANAGE_EXTERNAL_STORAGE`
                     val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                     intent.data = Uri.fromParts("package", it.packageName, null)
-                    it.startActivityForResult(intent, MANAGE_STORAGE_REQUEST_CODE)
+                    if (intent.resolveActivity(it.packageManager) != null) {
+                        it.startActivityForResult(intent, MANAGE_STORAGE_REQUEST_CODE)
+                    } else {
+                        //TODO: Incase no permissions show a screen like no permission (this prevents the restart due to permission failing)
+                        Toast.makeText(it, "Unable to open settings for file access permission", Toast.LENGTH_LONG).show()
+                    }
                 } else {
                     // Request permissions normally
                     ActivityCompat.requestPermissions(it, permissions.toTypedArray(), PERMISSION_REQUEST_CODE)
@@ -1002,9 +1018,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return super.dispatchKeyEvent(event)
     }
 
+    @RequiresApi(Build.VERSION_CODES.M)
     private fun triggerGraphics(nowPosition: Long) {
         hideLogo()
-//        hideTicker()
+        //hideTicker()
         hideLowerThird()
         val graphics = currentPlaylist?.graphics
         graphics?.let {
@@ -1019,7 +1036,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 if (StringUtils.isNotBlank(ltd.starts) && ltd.file != null) {
                     ltd.getStartsArray().forEach { s ->
                         val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
-                        Monitor.instance?.handler?.postDelayed({
+                        instance?.handler?.postDelayed({
                             showLowerThird(ltd)
                         }, start - nowPosition)
                     }
@@ -1031,12 +1048,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             news?.let { newsData ->
                 val messages = newsData.getMessagesArray()
                 if (messages.isNotEmpty()) {
-//                    initTickers(newsData)
+                    initTickers(newsData)
                     newsData.getStartsArray().forEach { s ->
                         val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
                         if (start >= nowPosition) {
-                            Monitor.instance?.handler?.postDelayed({
-                        //                                showTicker(newsData)
+                            instance?.handler?.postDelayed({
+                                showTicker(newsData)
                             }, start - nowPosition)
                         }
                     }
@@ -1055,16 +1072,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-//    private fun hideTicker() {
-//        tickerView?.let {
-//            if (it.visibility != View.GONE) {
-//                it.visibility = View.GONE
-//                it.removeChildViews()
-//                it.destroyAllScheduledTasks()
-//                Logger.log(AuditLog.Event.DISPLAY_NEWS_OFF)
-//            }
-//        }
-//    }
+    private fun hideTicker() {
+        tickerRecyclerView.let {
+            if (it.visibility != View.GONE) {
+                it.visibility = View.GONE
+                Logger.log(AuditLog.Event.DISPLAY_NEWS_OFF)
+            }
+        }
+    }
 
     private fun hideLogo() {
         val topLogo = findViewById<View>(R.id.topLogo)
@@ -1105,22 +1120,31 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-//    private fun initTickers(news: News) {
-//        tickerView = findViewById(R.id.tickerView)
-//        tickerView.setReplays(news.replays)
-//        tickerView.setDisplacement(news.speed.displacement)
-//        tickerView.setBackgroundColor(getColor(android.R.color.transparent))
-//
-//        for (message in news.messagesArray) {
-//            tickerView.addChildView(tickerView(message))
-//        }
-//    }
+    @RequiresApi(Build.VERSION_CODES.M)
+    private fun initTickers(news: News) {
+        // Initialize the RecyclerView
+        tickerRecyclerView = findViewById(R.id.tickerRecyclerView)
+        tickerRecyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        val tickerItems = listOf(
+            TickerItem(isImage = false, text = news.messages)
+        )
+        // Initialize the adapter with ticker items
+        tickerAdapter = TickerAdapter(
+            tickerItems,
+            displacement = news.speed.getDisplacement(),
+            backgroundColor = getColor(android.R.color.holo_blue_dark),
+            textColor = getColor(android.R.color.white)
+        )
+        tickerRecyclerView.adapter = tickerAdapter
 
-//    private fun showTicker(news: News) {
-//        Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, news.messages)
+//        for (message in news.messages) tickerView.addChildView(tickerView(message))
+    }
+
+     private fun showTicker(news: News) {
+         news.messages?.let { Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, it) }
 //        tickerView.showTickers() // TODO: add time run in context
-//        tickerView.visibility = View.VISIBLE
-//    }
+        tickerRecyclerView.visibility ?: View.VISIBLE
+    }
 
     private fun showLogo(logoPosition: Graphics.LogoPosition?) {
         val logo = File(getProgramsFolderPath(false) + File.separator + "logo.png")
@@ -1141,14 +1165,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
+//    @RequiresApi(Build.VERSION_CODES.M)
 //    private fun tickerView(message: String): TextView {
 //        val tickerView = TextView(instance)
 //        tickerView.layoutParams = LinearLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
 //        tickerView.text = message
 //        tickerView.textSize = resources.getDimension(R.dimen.tickerFontSize)
 //        tickerView.setBackgroundColor(getColor(R.color.trans))
-//        tickerView.setTextColor(ContextCompat.getColor(instance, android.R.color.white))
-//        tickerView.setPadding(100, 2, 100, 2)
+//        //tickerView.setTextColor(Monitor.instance?.let { ContextCompat.getColor(it, android.R.color.white) })
+//        //tickerView.setPadding(100, 2, 100, 2)
 //        return tickerView
 //    }
 
@@ -1235,11 +1260,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     fun restartApp() {
         maintenance?.cancelPendingIntents()
         val intent = Intent(instance, Monitor::class.java)
-        val mPendingIntent = PendingIntent.getActivity(Monitor.instance, 700000001, intent,
+        val mPendingIntent = PendingIntent.getActivity(
+            instance, 700000001, intent,
             PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         alarmManager?.set(AlarmManager.RTC, System.currentTimeMillis() + 100, mPendingIntent)
         Logger.log(AuditLog.Event.RESTARTING)
-        Monitor.instance?.finish()
+        instance?.finish()
         exitProcess(2)
     }
 

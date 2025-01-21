@@ -8,6 +8,7 @@
     <dimen name="tvLogoWidth">270dp</dimen>
     <dimen name="tvWatermarkHeight">200dp</dimen>
     <dimen name="tvWatermarkWidth">200dp</dimen>
-    <dimen name="tvGraphicsPadding">20dp</dimen>
+    <dimen name="tvGraphicsPadding">50dp</dimen>
+    <dimen name="tvLowerThirdPadding">30dp</dimen>
     <dimen name="tickerFontSize">30dp</dimen>
 </resources>

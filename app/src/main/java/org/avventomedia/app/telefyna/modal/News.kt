@@ -8,6 +8,7 @@ data class News(
     var replays: Int = 0,
     var speed: Speed = Speed.SLOW
 ) {
+
     fun getStartsArray(): Array<Double> {
         val startTimes = mutableListOf<Double>()
 
