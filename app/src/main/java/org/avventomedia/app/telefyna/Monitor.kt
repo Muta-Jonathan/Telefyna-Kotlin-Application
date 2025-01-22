@@ -1,9 +1,6 @@
 package org.avventomedia.app.telefyna
 
 import android.Manifest
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.Notification
@@ -20,7 +17,6 @@ import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.FileObserver
 import android.os.Handler
 import android.os.StrictMode
 import android.view.KeyEvent
@@ -126,8 +122,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var fillingForLackOfInternet = false
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
-
-    private var fileObserver: FileObserver? = null
 
     var dateFormat: SimpleDateFormat? = null
         private set
@@ -296,9 +290,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             initialiseWithPermissions()
         }
         maintenance!!.run()
-
-        // Initialize real-time file observer for config.json
-        observeConfigFile()
     }
 
     /**
@@ -350,39 +341,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return File(getAuditFilePath(this,"init.txt"))
     }
 
-    private fun observeConfigFile() {
-        val configFilePath = getConfigFile()
-        val configFile = File(configFilePath)
-        if (configFile.exists()) {
-            fileObserver = object : FileObserver(configFilePath, MODIFY) {
-                override fun onEvent(event: Int, path: String?) {
-                    if (event == MODIFY) {
-                        runOnUiThread {
-                            handleConfigFileChange(configFile)
-                        }
-                    }
-                }
-            }
-            fileObserver?.startWatching()
-        } else {
-            Logger.log(AuditLog.Event.ERROR, "Config file does not exist: $configFilePath")
-        }
-    }
-
-    private fun handleConfigFileChange(file: File) {
-        Logger.log(AuditLog.Event.FILE_CHANGED, "Config file modified: ${file.path}")
-        try {
-            val content = file.readText()
-            // Parse and handle the new configuration
-            configuration = Gson().fromJson(content, Config::class.java)
-            Logger.log(AuditLog.Event.CONFIG_UPDATED, "New config loaded: $content")
-            // Add any additional handling logic, e.g., updating the UI or reloading data
-        } catch (e: IOException) {
-            Logger.log(AuditLog.Event.ERROR, "Failed to read config file: ${e.message}")
-        }
-    }
-
-    fun getBumperDirectory(useExternalStorage: Boolean): String {
+    private fun getBumperDirectory(useExternalStorage: Boolean): String {
         return "${getProgramsFolderPath(useExternalStorage)}${File.separator}bumper"
     }
 
@@ -390,12 +349,16 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return getAppRootDirectory(useExternalStorage).absolutePath
     }
 
-    fun getLowerThirdDirectory(useExternalStorage: Boolean): String {
+    private fun getLowerThirdDirectory(useExternalStorage: Boolean): String {
         return "${getProgramsFolderPath(useExternalStorage)}${File.separator}lowerThird"
     }
 
-    fun getPlaylistDirectory(useExternalStorage: Boolean): String {
+    private fun getPlaylistDirectory(useExternalStorage: Boolean): String {
         return "${getProgramsFolderPath(useExternalStorage)}${File.separator}playlist"
+    }
+
+    private fun getWatermarkDirectory(useExternalStorage: Boolean): String {
+        return "${getProgramsFolderPath(useExternalStorage)}${File.separator}watermark"
     }
 
     fun getConfigFile(): String {
@@ -545,7 +508,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         player = buildPlayer(context) // TODO: test
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
-                        val crossfadeDuration = 2000L // Fade duration in milliseconds
 
                         if (modifiedOffset > 0) {
                             Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
@@ -674,45 +636,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             }
                         }
 
-                        // Apply crossfade transition
-                        if (previousPlayer != null) {
-                            previousPlayer?.volume = 1f
-                            val fadeOutAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
-                                duration = crossfadeDuration
-                                addUpdateListener {
-                                    previousPlayer?.volume = it.animatedValue as Float
-                                }
-                            }
-
-                            fadeOutAnimator.addListener(object : AnimatorListenerAdapter() {
-                                override fun onAnimationEnd(animation: Animator) {
-                                    previousPlayer?.stop()
-                                    previousPlayer?.release()
-                                }
-                            })
-
-                            fadeOutAnimator.start()
-                            Logger.log(AuditLog.Event.FADE_STARTED, "fade out transition played")
-                        }
-
                         val current = getPlayerView(true).player
                         instance?.let { current?.removeListener(it) }
-                        // Load the new media items
                         programItems.let { player!!.setMediaItems(it) }
                         nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
                         player!!.prepare()
-
-                        player!!.volume = 0f
-                        val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                            duration = crossfadeDuration
-                            addUpdateListener {
-                                player!!.volume = it.animatedValue as Float
-                            }
-                        }
-
-                        fadeInAnimator.start()
-                        Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
-
                         instance?.let { player!!.addListener(it) }
                         player!!.playWhenReady = true
                         nowProgramItem?.let { programItems[it] }
@@ -837,6 +765,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     it2
                 )
             }
+            if (mediaItem != null) {
+                triggerRepeatWatermark(mediaItem)
+            }
         }
     }
 
@@ -891,14 +822,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun shutDownHook() {
-        player?.release()
         Logger.log(AuditLog.Event.HEARTBEAT, "OFF")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         shutDownHook()
-        fileObserver?.stopWatching()
     }
 
     private fun getLastModifiedFor(index: Int): Long {
@@ -1022,9 +951,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (::tickerRecyclerView.isInitialized) {
             hideTicker()
         }
+        hideWatermark(); //hide watermark after program completed
         hideLowerThird()
         val graphics = currentPlaylist?.graphics
         graphics?.let {
+            // handle live logo display
+            if(it.displayLiveLogo) {
+                showLiveLogo(graphics.logoPosition);
+            }
+            // handle repeat Watermark display
+            if(it.displayRepeatWatermark) {
+                nowProgramItem?.let { it1 -> programItems[it1] }
+                    ?.let { it2 -> triggerRepeatWatermark(it2) };
+            }
+
             // Handle logo
             if (it.displayLogo) {
                 showLogo(it.logoPosition)
@@ -1050,7 +990,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 if (messages.isNotEmpty()) {
                     initTickers(newsData)
                     newsData.getStartsArray().forEach { s ->
-                        val start = Math.round((s ?: 1.0) * 60 * 1000) // s is in minutes, send in ms
+                        val start = Math.round((s) * 60 * 1000) // s is in minutes, send in ms
                         if (start >= nowPosition) {
                             instance?.handler?.postDelayed({
                                 showTicker(newsData)
@@ -1082,6 +1022,25 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
+    /**
+     * Triggers display of the repeat watermark on the program itself, not on intros and outros.
+     * @param mediaItem This helps retrieve the current on-change (on transition) program.
+     */
+    private fun triggerRepeatWatermark(mediaItem: MediaItem) {
+        hideWatermark() // Hide watermark after program onChange
+        val graphics = currentPlaylist?.graphics // Retrieve graphics
+
+        if (!mediaItem.mediaId.contains("INTRO") && !mediaItem.mediaId.contains("OUTRO")) {
+            // Handle repeat watermark display
+            if (graphics != null) {
+                if (graphics.displayRepeatWatermark) {
+                    showRepeatProgramWatermark()
+                }
+            }
+        }
+    }
+
+
     private fun hideLogo() {
         val topLogo = findViewById<View>(R.id.topLogo)
         val bottomLogo = findViewById<View>(R.id.bottomLogo)
@@ -1092,6 +1051,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             Logger.log(AuditLog.Event.DISPLAY_LOGO_OFF)
         }
     }
+
+    private fun hideWatermark() {
+        val watermark: View = findViewById(R.id.watermark)
+        if (watermark.visibility != View.GONE) {
+            watermark.visibility = View.GONE
+            Logger.log(AuditLog.Event.DISPLAY_PROGRAM_WATERMARK_OFF)
+        }
+    }
+
 
     private fun showLowerThird(lowerThird: LowerThird) {
         val path = currentPlaylist?.let { getLowerThirdDirectory(it.isUsingExternalStorage) } + File.separator + lowerThird.file
@@ -1136,6 +1104,50 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         )
         tickerRecyclerView.adapter = tickerAdapter
     }
+    private fun showRepeatProgramWatermark() {
+        val watermarkFolder = currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
+        val watermarkFile = File("$watermarkFolder${File.separator}repeat.png")
+
+        if (watermarkFile.exists()) {
+            val bitmap = BitmapFactory.decodeFile(watermarkFile.absolutePath)
+            val watermarkView: ImageView = findViewById(R.id.watermark)
+            watermarkView.setImageBitmap(bitmap)
+            watermarkView.visibility = View.VISIBLE
+            Logger.log(AuditLog.Event.DISPLAY_REPEAT_PROGRAM_WATERMARK_ON)
+        }
+    }
+
+    private fun showLiveLogo(logoPosition: Graphics.LogoPosition?) {
+        val watermarkFolder = currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
+        val logoFile = File("$watermarkFolder${File.separator}live.png")
+
+        if (logoFile.exists() && logoPosition != null) {
+            val bitmap = BitmapFactory.decodeFile(logoFile.absolutePath)
+            val logoView: ImageView = if (Graphics.LogoPosition.TOP == logoPosition) {
+                findViewById<ImageView>(R.id.topLogo).apply {
+                    Logger.log(AuditLog.Event.DISPLAY_LIVE_LOGO_ON, Graphics.LogoPosition.TOP.name)
+                }
+            } else {
+                findViewById<ImageView>(R.id.bottomLogo).apply {
+                    Logger.log(AuditLog.Event.DISPLAY_LIVE_LOGO_ON, Graphics.LogoPosition.BOTTOM.name)
+                }
+            }
+            logoView.setImageBitmap(bitmap)
+            logoView.visibility = View.VISIBLE
+        }
+    }
+
+
+//    private fun initTickers(news: News) {
+//        tickerView = findViewById(R.id.tickerView)
+//        tickerView.setReplays(news.replays)
+//        tickerView.setDisplacement(news.speed.displacement)
+//        tickerView.setBackgroundColor(getColor(android.R.color.transparent))
+//
+//        for (message in news.messagesArray) {
+//            tickerView.addChildView(tickerView(message))
+//        }
+//    }
 
      private fun showTicker(news: News) {
          news.messages?.let {
