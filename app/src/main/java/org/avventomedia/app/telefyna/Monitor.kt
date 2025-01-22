@@ -85,7 +85,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val REQUEST_CODE_PERMISSIONS = 123
         private const val PERMISSION_REQUEST_CODE = 100
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
-        var instance: Monitor? = null // whoever for player am using media3
+        var instance: Monitor? = null // for player am using media3
     }
 
     private lateinit var sharedPreferences: SharedPreferences
@@ -173,8 +173,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             atValue
         }
 
-        val programName = programItems.get(at)?.let { getMediaItemName(it) }
-        if (!programName.isNullOrBlank()) { // exclude bumpers
+        val programName = getMediaItemName(programItems[at])
+        if (programName.isNotBlank()) { // exclude bumpers
             val editor = sharedPreferences.edit()
             editor.putInt(getPlaylistPlayKey(index), atValue)
             editor.putLong(getPlaylistSeekTo(index), seekTo)
@@ -286,9 +286,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().permitAll().build())
 
         // Initialize permissions
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            initialiseWithPermissions()
-        }
+        initialiseWithPermissions()
         maintenance!!.run()
     }
 
@@ -1136,18 +1134,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             logoView.visibility = View.VISIBLE
         }
     }
-
-
-//    private fun initTickers(news: News) {
-//        tickerView = findViewById(R.id.tickerView)
-//        tickerView.setReplays(news.replays)
-//        tickerView.setDisplacement(news.speed.displacement)
-//        tickerView.setBackgroundColor(getColor(android.R.color.transparent))
-//
-//        for (message in news.messagesArray) {
-//            tickerView.addChildView(tickerView(message))
-//        }
-//    }
 
      private fun showTicker(news: News) {
          news.messages?.let {
