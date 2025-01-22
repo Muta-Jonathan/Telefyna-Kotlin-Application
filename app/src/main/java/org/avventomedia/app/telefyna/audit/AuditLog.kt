@@ -41,6 +41,9 @@ class AuditLog {
         DISPLAY_NEWS_OFF("Turning OFF news/info ticker"),
         LOWER_THIRD_ON("Displaying %s lower third"),
         LOWER_THIRD_OFF("Turning OFF lower third"),
+        DISPLAY_PROGRAM_WATERMARK_OFF("Turning OFF Program Watermark"),
+        DISPLAY_LIVE_LOGO_ON("Turning ON Live Logo at the %s"),
+        DISPLAY_REPEAT_PROGRAM_WATERMARK_ON("Turning ON Repeat Program Watermark"),
 
         // system
         EMAIL("Sending email: '%s' to: %s %s"),
@@ -61,7 +64,9 @@ class AuditLog {
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,
                 PLAYLIST_EMPTY_PLAY, PLAYLIST_MODIFIED, PLAYLIST_ITEM_CHANGE,
                 PLAYLIST_COMPLETED, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
-                DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF
+                DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
+                DISPLAY_PROGRAM_WATERMARK_OFF, DISPLAY_LIVE_LOGO_ON,
+                DISPLAY_REPEAT_PROGRAM_WATERMARK_ON
             )
 
             return when {
