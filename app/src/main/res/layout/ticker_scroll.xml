@@ -14,8 +14,8 @@
         android:layout_alignParentStart="true"
         android:layout_marginStart="@dimen/tvGraphicsPadding"
         android:background="@android:color/white"
-        android:paddingStart="5dp"
-        android:paddingBottom="2dp"
+        android:paddingStart="4dp"
+        android:paddingBottom="12dp"
         tools:ignore="RtlSymmetry" />
 
     <LinearLayout
@@ -25,7 +25,7 @@
         android:id="@+id/scrollTextImageSection"
         android:gravity="center_vertical"
         android:layout_marginStart="1dp"
-        android:layout_marginEnd="130dp"
+        android:layout_marginEnd="60dp"
         android:layout_toEndOf="@id/whiteSection"
         tools:ignore="UseCompoundDrawables">
 
@@ -34,7 +34,7 @@
             android:id="@+id/tickerText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="16sp"
+            android:textSize="24sp"
             android:textColor="@android:color/white"
             android:text="@string/ticker_scroll_text"
             android:ellipsize="marquee"
@@ -47,15 +47,15 @@
         android:id="@+id/timeSection"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="-145dp"
+        android:layout_marginStart="-210dp"
         android:layout_toEndOf="@id/scrollTextImageSection"
         android:background="@drawable/time_section_background"
-        android:paddingStart="8dp"
-        android:paddingEnd="5dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="10dp"
         android:paddingBottom="1.8dp"
-        android:format12Hour="hh:mm:ss a"
+        android:format12Hour="hh:mm:ss A"
         android:format24Hour="HH:mm:ss"
         android:textColor="#0076aa"
         android:textStyle="bold"
-        android:textSize="14sp" />
+        android:textSize="23sp" />
 </RelativeLayout>
