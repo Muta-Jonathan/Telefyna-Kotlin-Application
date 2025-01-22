@@ -1127,7 +1127,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         tickerRecyclerView = findViewById(R.id.tickerRecyclerView)
         tickerRecyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         val tickerItems = listOf(
-            TickerItem(text = news.messages)
+            TickerItem(text = news.messages, time = news.showTime)
         )
         // Initialize the adapter with ticker items
         tickerAdapter = TickerAdapter(

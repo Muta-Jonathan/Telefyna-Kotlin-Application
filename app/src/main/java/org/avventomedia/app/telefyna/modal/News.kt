@@ -4,8 +4,7 @@ data class News(
     var messages: String? = null,
     // minutes to start ticker at during program play,  2#6#8 means start and 2nd, 6th and 8th second, This time includes bumpers
     var starts: String = "0",
-    // number of times to loop/play messages
-    var replays: Int = 0,
+    var showTime: Boolean = true,
     var speed: Speed = Speed.SLOW
 ) {
 

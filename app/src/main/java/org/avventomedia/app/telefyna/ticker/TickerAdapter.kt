@@ -18,7 +18,9 @@ class TickerAdapter(
 ) : RecyclerView.Adapter<TickerAdapter.TickerViewHolder>() {
 
     inner class TickerViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val whiteLabel: TextView = itemView.findViewById(R.id.whiteSection)
         val tickerText: TextView = itemView.findViewById(R.id.tickerText)
+        val timeClock: TextView = itemView.findViewById(R.id.timeSection)
     }
 
     @SuppressLint("ResourceAsColor")
@@ -34,8 +36,16 @@ class TickerAdapter(
     override fun onBindViewHolder(holder: TickerViewHolder, position: Int) {
         val tickerItem = items[position]
         val textView = holder.tickerText
+        val timeClock = holder.timeClock
+        val whiteSection = holder.whiteLabel
 
-        textView.visibility = View.VISIBLE
+        val isTimeEnabled = tickerItem.time == true
+        val hasText = !tickerItem.text.isNullOrBlank()
+
+        textView.visibility = if (isTimeEnabled && hasText) View.VISIBLE else View.GONE
+        timeClock.visibility = if (isTimeEnabled) View.VISIBLE else View.GONE
+        whiteSection.visibility = if (isTimeEnabled && hasText) View.VISIBLE else View.GONE
+
         holder.tickerText.text = tickerItem.text
         // Apply displacement for scrolling effect (if needed)
         holder.tickerText.translationX = (-displacement * position).toFloat()
@@ -48,4 +58,5 @@ class TickerAdapter(
 
 data class TickerItem(
     val text: String? = null,
+    var time: Boolean? = true
 )
