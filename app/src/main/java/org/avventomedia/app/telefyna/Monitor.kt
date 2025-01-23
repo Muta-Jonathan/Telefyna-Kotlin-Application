@@ -127,8 +127,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
 
-    private var fileObserver: FileObserver? = null
-
     var dateFormat: SimpleDateFormat? = null
         private set
 
@@ -294,9 +292,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // Initialize permissions
         initialiseWithPermissions()
         maintenance!!.run()
-
-        // Initialize real-time file observer for config.json
-        observeConfigFile()
     }
 
     /**
@@ -347,39 +342,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun getReInitializerFile(): File {
         return File(getAuditFilePath(this,"init.txt"))
     }
-
-    private fun observeConfigFile() {
-        val configFilePath = getConfigFile()
-        val configFile = File(configFilePath)
-        if (configFile.exists()) {
-            fileObserver = object : FileObserver(configFilePath, MODIFY) {
-                override fun onEvent(event: Int, path: String?) {
-                    if (event == MODIFY) {
-                        runOnUiThread {
-                            handleConfigFileChange(configFile)
-                        }
-                    }
-                }
-            }
-            fileObserver?.startWatching()
-        } else {
-            Logger.log(AuditLog.Event.ERROR, "Config file does not exist: $configFilePath")
-        }
-    }
-
-    private fun handleConfigFileChange(file: File) {
-        Logger.log(AuditLog.Event.FILE_CHANGED, "Config file modified: ${file.path}")
-        try {
-            val content = file.readText()
-            // Parse and handle the new configuration
-            configuration = Gson().fromJson(content, Config::class.java)
-            Logger.log(AuditLog.Event.CONFIG_UPDATED, "New config loaded: $content")
-            // Add any additional handling logic, e.g., updating the UI or reloading data
-        } catch (e: IOException) {
-            Logger.log(AuditLog.Event.ERROR, "Failed to read config file: ${e.message}")
-        }
-    }
-
 
     private fun getBumperDirectory(useExternalStorage: Boolean): String {
         return "${getProgramsFolderPath(useExternalStorage)}${File.separator}bumper"
@@ -899,7 +861,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onDestroy() {
         super.onDestroy()
         shutDownHook()
-        fileObserver?.stopWatching()
     }
 
     private fun getLastModifiedFor(index: Int): Long {

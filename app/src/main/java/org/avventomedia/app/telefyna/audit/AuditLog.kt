@@ -46,8 +46,6 @@ class AuditLog {
         DISPLAY_PROGRAM_WATERMARK_OFF("Turning OFF Program Watermark"),
         DISPLAY_LIVE_LOGO_ON("Turning ON Live Logo at the %s"),
         DISPLAY_REPEAT_PROGRAM_WATERMARK_ON("Turning ON Repeat Program Watermark"),
-        FILE_CHANGED("Modified Config file %s"),
-        CONFIG_UPDATED("New config loaded %s"),
         FADE_STARTED("Fade started, %s"),
         FADE_STOPPED("Fade stopped, %s"),
 
@@ -73,8 +71,7 @@ class AuditLog {
                 PLAYLIST_COMPLETED, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
                 DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
                 DISPLAY_PROGRAM_WATERMARK_OFF, DISPLAY_LIVE_LOGO_ON,
-                DISPLAY_REPEAT_PROGRAM_WATERMARK_ON, FILE_CHANGED, CONFIG_UPDATED,
-                FILE_CHANGED, CONFIG_UPDATED
+                DISPLAY_REPEAT_PROGRAM_WATERMARK_ON
             )
 
             return when {
