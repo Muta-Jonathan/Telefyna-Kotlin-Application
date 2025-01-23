@@ -1,6 +1,9 @@
 package org.avventomedia.app.telefyna
 
 import android.Manifest
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.Notification
@@ -17,6 +20,7 @@ import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.FileObserver
 import android.os.Handler
 import android.os.StrictMode
 import android.view.KeyEvent
@@ -506,6 +510,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         player = buildPlayer(context) // TODO: test
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
+                        val crossFadeDuration = 2000L // Fade duration in milliseconds, (crossfadeDuration / 1000) This will be 2 seconds
 
                         if (modifiedOffset > 0) {
                             Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
@@ -513,7 +518,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         }
 
                         nowProgramItem = currentPlaylist!!.seekTo.program
-                        var startOnePlayProgramItem: Int? = null
+                        startOnePlayProgramItem = null
                         var nowPosition = currentPlaylist!!.seekTo.position
 
                         if (currentPlaylist!!.type != Playlist.Type.ONLINE) {
@@ -634,11 +639,41 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             }
                         }
 
+                        // Apply crossfade transition
+                        if (previousPlayer != null) {
+                            previousPlayer?.volume = 1f
+                            val fadeOutAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
+                                duration = crossFadeDuration
+                                addUpdateListener {
+                                    previousPlayer?.volume = it.animatedValue as Float
+                                }
+                            }
+                            fadeOutAnimator.addListener(object : AnimatorListenerAdapter() {
+                                override fun onAnimationEnd(animation: Animator) {
+                                    previousPlayer?.stop()
+                                    previousPlayer?.release()
+                                }
+                            })
+                            fadeOutAnimator.start()
+                            Logger.log(AuditLog.Event.FADE_STARTED, "fade out transition played")
+                        }
+
                         val current = getPlayerView(true).player
                         instance?.let { current?.removeListener(it) }
+                        // Load the new media items
                         programItems.let { player!!.setMediaItems(it) }
                         nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
                         player!!.prepare()
+                        player!!.volume = 0f
+                        val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                            duration = crossFadeDuration
+                            addUpdateListener {
+                                player!!.volume = it.animatedValue as Float
+                            }
+                        }
+                        fadeInAnimator.start()
+                        Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
+
                         instance?.let { player!!.addListener(it) }
                         player!!.playWhenReady = true
                         nowProgramItem?.let { programItems[it] }
@@ -850,6 +885,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
+    @SuppressLint("QueryPermissionsNeeded")
     private fun askForPermissions(permissions: List<String>) {
         instance?.let {
             if (permissions.isNotEmpty()) {
@@ -988,7 +1024,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 if (messages.isNotEmpty()) {
                     initTickers(newsData)
                     newsData.getStartsArray().forEach { s ->
-                        val start = Math.round((s) * 60 * 1000) // s is in minutes, send in ms
+                        val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
                         if (start >= nowPosition) {
                             instance?.handler?.postDelayed({
                                 showTicker(newsData)
@@ -1038,7 +1074,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-
     private fun hideLogo() {
         val topLogo = findViewById<View>(R.id.topLogo)
         val bottomLogo = findViewById<View>(R.id.bottomLogo)
@@ -1057,7 +1092,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             Logger.log(AuditLog.Event.DISPLAY_PROGRAM_WATERMARK_OFF)
         }
     }
-
 
     private fun showLowerThird(lowerThird: LowerThird) {
         val path = currentPlaylist?.let { getLowerThirdDirectory(it.isUsingExternalStorage) } + File.separator + lowerThird.file
@@ -1138,6 +1172,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
      private fun showTicker(news: News) {
          news.messages?.let {
              Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, it)
+         }
+         news.starts.let {
              Logger.log(AuditLog.Event.DISPLAY_TIME_ON, it)
          }
 

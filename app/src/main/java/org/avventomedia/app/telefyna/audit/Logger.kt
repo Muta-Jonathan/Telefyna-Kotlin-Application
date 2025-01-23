@@ -1,5 +1,6 @@
 package org.avventomedia.app.telefyna.audit
 
+import android.annotation.SuppressLint
 import android.os.Build
 import android.util.Log
 import androidx.annotation.OptIn
@@ -18,6 +19,7 @@ import java.util.Calendar
 
 class Logger {
     companion object {
+        @SuppressLint("SimpleDateFormat")
         private val datetimeFormat = SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
 
         /*
@@ -32,7 +34,7 @@ class Logger {
                 Log.i(event.name, message)
             }
             val path = Monitor.instance?.getAuditLogsFilePath(getToday())
-            val msg = String.format("%s %s: \n\t%s", getNow(), event.name, message)
+            val msg = String.format("%s %s: \n\t%s\n\n", getNow(), event.name, message)
             try {
                 FileUtils.writeStringToFile(File(path as String), msg.replace("<br>", ","), StandardCharsets.UTF_8, true)
             } catch (e: IOException) {
