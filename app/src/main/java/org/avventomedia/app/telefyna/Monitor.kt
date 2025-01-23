@@ -518,7 +518,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         }
 
                         nowProgramItem = currentPlaylist!!.seekTo.program
-                        var startOnePlayProgramItem: Int? = null
+                        startOnePlayProgramItem = null
                         var nowPosition = currentPlaylist!!.seekTo.position
 
                         if (currentPlaylist!!.type != Playlist.Type.ONLINE) {
