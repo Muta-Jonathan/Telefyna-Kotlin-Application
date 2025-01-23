@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Telefyna</string>
+    <string name="ticker_image_description">Tv logo</string>
+    <string name="ticker_scroll_text">Sample Ticker Text</string>
 </resources>

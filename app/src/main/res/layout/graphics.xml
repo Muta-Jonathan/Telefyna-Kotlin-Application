@@ -31,13 +31,15 @@
         android:layout_alignParentBottom="true"
         android:visibility="gone"/>
 
-<!--    <com.vinay.ticker.lib.TickerView-->
-<!--        android:id="@+id/tickerView"-->
-<!--        android:layout_width="match_parent"-->
-<!--        android:layout_height="wrap_content"-->
-<!--        android:layout_alignParentBottom="true"-->
-<!--        android:layout_marginBottom="@dimen/tvGraphicsPadding"-->
-<!--        android:visibility="gone"/>-->
+    <!-- RecyclerView for the ticker -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/tickerRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:layout_alignParentBottom="true"
+        android:layout_marginBottom="@dimen/tvGraphicsPadding"
+        android:visibility="visible" />
 
     <ImageView
         android:id="@+id/bottomLogo"
@@ -48,6 +50,5 @@
         android:layout_alignParentEnd="true"
         android:visibility="gone"
         tools:ignore="RtlSymmetry" />
-
 
 </RelativeLayout>

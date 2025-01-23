@@ -39,11 +39,18 @@ class AuditLog {
         DISPLAY_LOGO_ON("Turning ON Logo at the %s"),
         DISPLAY_NEWS_ON("Displaying news/info ticker with messages: %s"),
         DISPLAY_NEWS_OFF("Turning OFF news/info ticker"),
+        DISPLAY_TIME_ON("Displaying time on ticker"),
+        DISPLAY_TIME_OFF("Turning OFF time on ticker"),
         LOWER_THIRD_ON("Displaying %s lower third"),
         LOWER_THIRD_OFF("Turning OFF lower third"),
         DISPLAY_PROGRAM_WATERMARK_OFF("Turning OFF Program Watermark"),
         DISPLAY_LIVE_LOGO_ON("Turning ON Live Logo at the %s"),
         DISPLAY_REPEAT_PROGRAM_WATERMARK_ON("Turning ON Repeat Program Watermark"),
+        FILE_CHANGED("Modified Config file %s"),
+        CONFIG_UPDATED("New config loaded %s"),
+        FADE_STARTED("Fade started %s"),
+        FADE_STOPPED("Fade stopped %s"),
+
 
         // system
         EMAIL("Sending email: '%s' to: %s %s"),
@@ -66,7 +73,7 @@ class AuditLog {
                 PLAYLIST_COMPLETED, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
                 DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
                 DISPLAY_PROGRAM_WATERMARK_OFF, DISPLAY_LIVE_LOGO_ON,
-                DISPLAY_REPEAT_PROGRAM_WATERMARK_ON
+                DISPLAY_REPEAT_PROGRAM_WATERMARK_ON, FILE_CHANGED, CONFIG_UPDATED
             )
 
             return when {
