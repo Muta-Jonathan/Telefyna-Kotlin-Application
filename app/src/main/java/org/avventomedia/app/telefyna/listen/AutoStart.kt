@@ -6,9 +6,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import org.avventomedia.app.telefyna.Monitor
 
 class AutoStart : BroadcastReceiver() {
+    @OptIn(UnstableApi::class)
     override fun onReceive(context: Context, intent: Intent) {
         if (Intent.ACTION_BOOT_COMPLETED == intent.action) {
             val i = Intent(context, Monitor::class.java).apply {

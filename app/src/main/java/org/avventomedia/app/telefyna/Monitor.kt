@@ -548,7 +548,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         player = buildPlayer(context) // TODO: test
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
-                        val crossfadeDuration = 2000L // Fade duration in milliseconds
+                        val crossFadeDuration = 2000L // Fade duration in milliseconds, (crossfadeDuration / 1000) This will be 2 seconds
 
                         if (modifiedOffset > 0) {
                             Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
@@ -681,19 +681,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         if (previousPlayer != null) {
                             previousPlayer?.volume = 1f
                             val fadeOutAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
-                                duration = crossfadeDuration
+                                duration = crossFadeDuration
                                 addUpdateListener {
                                     previousPlayer?.volume = it.animatedValue as Float
                                 }
                             }
-
                             fadeOutAnimator.addListener(object : AnimatorListenerAdapter() {
                                 override fun onAnimationEnd(animation: Animator) {
                                     previousPlayer?.stop()
                                     previousPlayer?.release()
                                 }
                             })
-
                             fadeOutAnimator.start()
                             Logger.log(AuditLog.Event.FADE_STARTED, "fade out transition played")
                         }
@@ -704,15 +702,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         programItems.let { player!!.setMediaItems(it) }
                         nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
                         player!!.prepare()
-
                         player!!.volume = 0f
                         val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                            duration = crossfadeDuration
+                            duration = crossFadeDuration
                             addUpdateListener {
                                 player!!.volume = it.animatedValue as Float
                             }
                         }
-
                         fadeInAnimator.start()
                         Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
 

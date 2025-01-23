@@ -48,8 +48,8 @@ class AuditLog {
         DISPLAY_REPEAT_PROGRAM_WATERMARK_ON("Turning ON Repeat Program Watermark"),
         FILE_CHANGED("Modified Config file %s"),
         CONFIG_UPDATED("New config loaded %s"),
-        FADE_STARTED("Fade started %s"),
-        FADE_STOPPED("Fade stopped %s"),
+        FADE_STARTED("Fade started, %s"),
+        FADE_STOPPED("Fade stopped, %s"),
 
 
         // system
