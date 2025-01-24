@@ -146,9 +146,9 @@ For any questions or queries, please receivers the support team at apps@avventom
 - [x] Replay fillers if gone
 - [x] Build a schedule GUI builder & viewer for `config.json`
 - [x] Support RTMP format 
-- [x] Support for Live & Repeat Watermarks (live is to show if turned on from the schedule and when u are on ONLINE playlist and others can show Repeat from the schedule if turned on) 
+- [x] Support for Live & Repeat Watermarks (live is to show if turned on from the schedule and when u are on ONLINE playlist and others can show Repeat from the schedule if turned on) [#1](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/pull/1)
 - [x] Fix show Repeat watermark on Restart or Reboot reinitialization (look into onMediaItemTransition method)
-- [x] Added show Repeat watermark on Preview schedule `(2025-01-22)`
+- [x] Added show Repeat watermark on Preview schedule in scheduler 
 - [x] Resize logo sizes on telefyna  `(2025-01-22)`
 - [x] Add smooth and fade transitions between programs switches `(2025-01-23)`
 - [x] Solve transition of the lower third to be smooth on start `(2025-01-24)`
@@ -171,5 +171,5 @@ For any questions or queries, please receivers the support team at apps@avventom
     However, this will not work on Android 11+`.
 ---
 
-- [x] Add Custom scroll ticker with time (able to show time and scrolling text) `(2025-01-24)`
-- [x] Added fading mechanisms instead of abrupt cuts `(2025-01-24)` 
+- [x] Add Custom scroll ticker with time (able to show time and scrolling text) `(2025-01-24)` [#3](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/pull/3)
+- [x] Added fading mechanisms instead of abrupt cuts `(2025-01-24)` [#5](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/pull/5)
