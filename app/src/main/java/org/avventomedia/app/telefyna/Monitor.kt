@@ -1101,6 +1101,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         )
         tickerRecyclerView.adapter = tickerAdapter
     }
+
     private fun showRepeatProgramWatermark() {
         val watermarkFolder = currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
         val watermarkFile = File("$watermarkFolder${File.separator}repeat.png")
