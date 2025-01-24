@@ -719,22 +719,21 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     // Retrieve video duration in milliseconds
-    private fun getDuration(path: String): Long? {
+    private fun getDuration(path: String): Long {
         var mediaPlayer: MediaPlayer? = null
         var duration: Long = 0
-        return try {
+        try {
             mediaPlayer = MediaPlayer().apply {
                 instance?.let { setDataSource(it, Uri.parse(path)) }
                 prepare()
-                duration = duration
             }
-            duration
+            duration = mediaPlayer.duration.toLong()
         } catch (e: Exception) {
             Logger.log(AuditLog.Event.ERROR, e.message ?: "Unknown error")
-            null
         } finally {
             mediaPlayer?.release()
         }
+        return duration
     }
 
     private fun seekImmediateNonCompletedSlot(playlist: Playlist, mediaItems: List<MediaItem>): Seek? {
@@ -744,7 +743,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             val now = Calendar.getInstance().timeInMillis
             mediaItems.forEachIndexed { i, mediaItem ->
                 val duration = getDuration(mediaItem.mediaId)
-                if ((duration ?: (0 + startTime)) > now) {
+                if ((duration + startTime) > now) {
                     return Seek(i, now - startTime)
                 }
             }
@@ -1136,6 +1135,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         )
         tickerRecyclerView.adapter = tickerAdapter
     }
+
     private fun showRepeatProgramWatermark() {
         val watermarkFolder = currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
         val watermarkFile = File("$watermarkFolder${File.separator}repeat.png")

@@ -46,7 +46,10 @@ class TickerAdapter(
         timeClock.visibility = if (isTimeEnabled) View.VISIBLE else View.GONE
         whiteSection.visibility = if (isTimeEnabled && hasText) View.VISIBLE else View.GONE
 
-        holder.tickerText.text = tickerItem.text
+        // Modify the ticker text here by adding space on Start scroll before setting it
+        val modifiedText = "${StringUtils.spaces120}${tickerItem.text}" // Add space before the text
+
+        holder.tickerText.text = modifiedText
         // Apply displacement for scrolling effect (if needed)
         holder.tickerText.translationX = (-displacement * position).toFloat()
         // Start the marquee animation
@@ -60,3 +63,7 @@ data class TickerItem(
     val text: String? = null,
     var time: Boolean? = true
 )
+
+object StringUtils {
+    val spaces120 = "\u00A0".repeat(120) // Cached globally
+}
