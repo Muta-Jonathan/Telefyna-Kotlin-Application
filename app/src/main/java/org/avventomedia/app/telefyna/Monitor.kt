@@ -3,6 +3,7 @@ package org.avventomedia.app.telefyna
 import android.Manifest
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlarmManager
@@ -26,6 +27,7 @@ import android.os.StrictMode
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.widget.ImageView
 import android.widget.Toast
 import android.widget.VideoView
@@ -292,6 +294,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // Initialize permissions
         initialiseWithPermissions()
         maintenance!!.run()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(TelefynaUnCaughtExceptionHandler.CRASH, false)) {
+            intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)
+                ?.let { Logger.log(AuditLog.Event.CRASH, it) }
+        }
     }
 
     /**
@@ -1177,7 +1188,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
              Logger.log(AuditLog.Event.DISPLAY_TIME_ON, it)
          }
 
-        tickerRecyclerView.visibility = View.VISIBLE
+         fadeInRecyclerView(tickerRecyclerView)
+    }
+
+    private fun fadeInRecyclerView(recyclerView : RecyclerView) {
+        recyclerView.visibility = View.VISIBLE
+        val fadeIn = ObjectAnimator.ofFloat(recyclerView, "alpha", 0f, 1f)
+        fadeIn.duration = 1000 // Set duration for the fade-in effect
+        fadeIn.interpolator = DecelerateInterpolator()
+        fadeIn.start()
     }
 
     private fun showLogo(logoPosition: Graphics.LogoPosition?) {
