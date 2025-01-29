@@ -140,7 +140,7 @@ class Maintenance {
                     else -> {
                         // Handle HLS, RTSP, and Smooth Streaming (default behavior)
                         it.urlOrFolder?.let { url ->
-                            MediaItem.fromUri(url)?.let { mediaItem ->
+                            MediaItem.fromUri(url).let { mediaItem ->
                                 programs.add(mediaItem)
                             }
                         }
@@ -152,7 +152,7 @@ class Maintenance {
                     val localPlaylistFolder = Monitor.instance?.getDirectoryFromPlaylist(it, i)
                     if (localPlaylistFolder != null) {
                         if (localPlaylistFolder.exists() && localPlaylistFolder.listFiles()?.isNotEmpty() == true) {
-                            var addedFirstItem = false
+                            val addedFirstItem = false
                             Utils.setupLocalPrograms(pgms, localPlaylistFolder, addedFirstItem, it)
                             programs.addAll(pgms)
                         }

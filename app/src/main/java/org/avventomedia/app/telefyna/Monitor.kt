@@ -544,9 +544,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
                                 if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
                                     // previousProgram == -1 when it was reset
-                                    nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems?.size)?.minus(
+                                    nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(
                                             1
-                                        )) {
+                                        )
+                                    ) {
                                         0
                                     } else if (currentPlaylist!!.repeat?.let {
                                             canResume(
@@ -554,7 +555,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                                 it
                                             )
                                         } == true) {
-                                        previousProgram?.plus(1) // Next program excluding bumpers
+                                        previousProgram.plus(1) // Next program excluding bumpers
                                     } else {
                                         previousProgram
                                     }
@@ -565,15 +566,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 }
 
                                 currentPlaylist!!.name?.let {
-                                    if (previousSeekTo != null) {
-                                        nowProgramItem?.let { it1 ->
-                                            programItems.get(
-                                                it1
-                                            )
-                                        }?.let { it2 -> getMediaItemName(it2) }?.let { it3 ->
-                                            Logger.log(AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME,
-                                                it, it3, previousSeekTo)
-                                        }
+                                    nowProgramItem?.let { it1 ->
+                                        programItems[it1]
+                                    }?.let { it2 -> getMediaItemName(it2) }?.let { it3 ->
+                                        Logger.log(AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME,
+                                            it, it3, previousSeekTo)
                                     }
                                 }
                                 if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE) {
@@ -630,18 +627,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             }
 
                             if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
-                                val seek = seekImmediateNonCompletedSlot(currentPlaylist!!,
-                                    programItems
-                                )
+                                val seek = seekImmediateNonCompletedSlot(currentPlaylist!!, programItems)
                                 if (seek != null) {
-                                    nowProgramItem = if (seek.program == (programItems?.size)?.minus(
-                                            1
-                                        )) seek.program else nowProgramItem?.plus(
-                                        seek.program
-                                    )
-                                    nowPosition = if (seek.program == (programItems?.size)?.minus(1)) seek.position else nowProgramItem?.plus(
-                                        seek.position
-                                    )!!
+                                    nowProgramItem = if (seek.program == (programItems.size).minus(1)) seek.program else nowProgramItem?.plus(seek.program)
+                                    nowPosition = if (seek.program == (programItems.size).minus(1)) seek.position else nowProgramItem?.plus(seek.position)!!
                                 } else { // Slot is ended, switch to fillers
                                     Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getPlayingAtIndexLabel(nowPlayingIndex))
                                     switchNow(secondDefaultIndex, false, context)
@@ -871,6 +860,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onDestroy() {
         super.onDestroy()
         shutDownHook()
+        maintenanceHandler?.removeCallbacksAndMessages(null)
+        handler?.removeCallbacksAndMessages(null)
     }
 
     private fun getLastModifiedFor(index: Int): Long {
@@ -1327,6 +1318,4 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }
         }
     }
-
-
 }
