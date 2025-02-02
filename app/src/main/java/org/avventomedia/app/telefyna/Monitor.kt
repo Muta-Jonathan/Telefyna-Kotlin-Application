@@ -21,7 +21,6 @@ import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.os.FileObserver
 import android.os.Handler
 import android.os.StrictMode
 import android.view.KeyEvent
@@ -31,6 +30,7 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.ImageView
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.activity.OnBackPressedCallback
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
@@ -270,6 +270,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.monitor)
+
+        // HACK: Disable back press (Issue arises due to remote control by RustDesk)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // Do nothing (Prevents back navigation)
+            }
+        })
 
         // handle any uncaught exception
         Thread.setDefaultUncaughtExceptionHandler(TelefynaUnCaughtExceptionHandler())

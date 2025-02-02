@@ -25,7 +25,7 @@
         android:id="@+id/scrollTextImageSection"
         android:gravity="center_vertical"
         android:layout_marginStart="1dp"
-        android:layout_marginEnd="60dp"
+        android:layout_marginEnd="100dp"
         android:layout_toEndOf="@id/whiteSection"
         tools:ignore="UseCompoundDrawables">
 
