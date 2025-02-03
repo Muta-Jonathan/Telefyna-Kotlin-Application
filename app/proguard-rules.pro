@@ -19,3 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Suppress warnings for AWT classes that aren't available on Android
+-dontwarn java.awt.datatransfer.DataFlavor
+-dontwarn java.awt.datatransfer.Transferable
+-keep class org.avventomedia.app.telefyna.modal.* {*;}

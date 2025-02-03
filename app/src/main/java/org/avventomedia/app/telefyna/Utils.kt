@@ -59,7 +59,6 @@ object Utils {
 
             if (Playlist.Type.LOCAL_RANDOMIZED == playlist.type) {
                 programs.shuffle()
-                programs.shuffle()
             }
         }
     }
@@ -84,7 +83,7 @@ object Utils {
             val chars = CharArray(1024)
             var read: Int
             while (reader.read(chars).also { read = it } != -1) {
-                buffer.append(chars, 0, read)
+                buffer.appendRange(chars, 0, read)
             }
             reader.close()
             buffer.toString()

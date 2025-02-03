@@ -19,7 +19,11 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            // Enable code shrinking (minification)
+            isMinifyEnabled = true
+            // Use R8 for code shrinking (enabled by default in newer Android Gradle plugin versions)
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -34,8 +38,6 @@ android {
         jvmTarget = "1.8"
     }
 }
-
-
 
 dependencies {
 
