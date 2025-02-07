@@ -92,7 +92,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val REQUEST_CODE_PERMISSIONS = 123
         private const val PERMISSION_REQUEST_CODE = 100
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
-        val CROSS_FADE_DURATION = 10000L // Reduce fade duration for faster switching to 10seconds
+        private const val CROSS_FADE_DURATION = 10000L // Reduce fade duration for faster switching to 10seconds
         var instance: Monitor? = null // for player am using media3
     }
 
