@@ -92,6 +92,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val REQUEST_CODE_PERMISSIONS = 123
         private const val PERMISSION_REQUEST_CODE = 100
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
+        val CROSS_FADE_DURATION = 10000L // Reduce fade duration for faster switching to 10seconds
         var instance: Monitor? = null // for player am using media3
     }
 
@@ -495,7 +496,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             nowPlayingIndex = index
             currentPlaylist = playlist
             programItems = maintenance?.retrievePrograms(currentPlaylist) as MutableList<MediaItem>
-//            instance?.handler?.removeCallbacksAndMessages(null)
             instance?.handler?.looper?.thread?.let { thread ->
                 if (thread.isAlive) {
                     instance?.handler?.removeCallbacksAndMessages(null)
@@ -533,7 +533,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         player = buildPlayer(context) // TODO: test
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
-                        val crossFadeDuration = 10000L // Reduce fade duration for faster switching to 10seconds
 
                         if (modifiedOffset > 0) {
                             Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
@@ -655,7 +654,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         if (previousPlayer != null && !currentPlaylist!!.isResuming()) {
                             previousPlayer?.volume = 1f
                             val fadeOutAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
-                                duration = crossFadeDuration
+                                duration = CROSS_FADE_DURATION
                                 addUpdateListener {
                                     previousPlayer.let { player ->
                                         if (player!!.isPlaying) {
@@ -692,7 +691,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         if (!currentPlaylist!!.isResuming()) {
                             player!!.volume = 0f
                             val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                                duration = crossFadeDuration
+                                duration = CROSS_FADE_DURATION
                                 addUpdateListener {
                                     player!!.volume = it.animatedValue as Float
                                 }
