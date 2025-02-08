@@ -19,7 +19,6 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
             // Enable code shrinking (minification)
             isMinifyEnabled = true
             // Use R8 for code shrinking (enabled by default in newer Android Gradle plugin versions)
