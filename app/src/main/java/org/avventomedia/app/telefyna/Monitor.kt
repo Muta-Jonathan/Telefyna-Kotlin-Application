@@ -530,7 +530,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         return
                     } else {
                         previousPlayer = player
-                        player = buildPlayer(context) // TODO: test
+                        if (player == null) {
+                            player = buildPlayer(context) // Create a new player
+                        }
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
 
@@ -593,7 +595,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                     startOnePlayProgramItem = nowProgramItem
                                     nowProgramItem = 0
                                 } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
-                                    nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo!!
+                                    nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
                                 }
                             } else {
                                 val bumperFolder = getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)

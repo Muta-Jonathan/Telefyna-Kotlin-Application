@@ -16,8 +16,8 @@ class TelefynaCodecRender @OptIn(UnstableApi::class) constructor
     mediaCodecSelector: MediaCodecSelector,
     allowedJoiningTimeMs: Long,
     enableDecoderFallback: Boolean,
-    @Nullable eventHandler: Handler? = null,
-    @Nullable eventListener: VideoRendererEventListener? = null,
+    eventHandler: Handler? = null,
+    eventListener: VideoRendererEventListener? = null,
     maxDroppedFramesToNotify: Int
 ) : MediaCodecVideoRenderer(context, mediaCodecSelector, allowedJoiningTimeMs, enableDecoderFallback, eventHandler, eventListener, maxDroppedFramesToNotify) {
 
