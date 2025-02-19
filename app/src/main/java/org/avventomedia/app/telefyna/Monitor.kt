@@ -216,11 +216,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return try {
             val lastPlayed = Calendar.getInstance()
             val today = Calendar.getInstance()
-            lastPlayed.time = ((sharedPreferences.getString(getPlaylistIndex(index)?.let {
+            lastPlayed.time = ((sharedPreferences.getString(
                 getPlaylistLastPlayed(
-                    it
-                )
-            }, now) ?: now)?.let {
+                    getPlaylistIndex(index)
+                ), now) ?: now)?.let {
                 dateFormat?.parse(it)
             } ?: now) as Date // Fallback to `now` if the parsing fails or result is null
 
@@ -525,7 +524,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         return
                     } else {
                         previousPlayer = player
-                        player = buildPlayer(context) // TODO: test
+                        if (player == null) {
+                            player = buildPlayer(context) // Create a new player
+                        }
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
                         val crossFadeDuration = 2000L // Fade duration in milliseconds, (crossfadeDuration / 1000) This will be 2 seconds
@@ -589,7 +590,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                     startOnePlayProgramItem = nowProgramItem
                                     nowProgramItem = 0
                                 } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
-                                    nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo!!
+                                    nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
                                 }
                             } else {
                                 val bumperFolder = getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)
