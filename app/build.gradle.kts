@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "org.avventomedia.app.telefyna"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "org.avventomedia.app.telefyna"
         minSdk = 21
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -70,5 +70,7 @@ dependencies {
     implementation(libs.androidx.media3.datasource.rtmp)
     implementation(libs.androidx.media3.exoplayer.dash)
     implementation(libs.androidx.media3.ui)
+    implementation (libs.androidx.lifecycle.runtime.ktx)
+    implementation (libs.kotlinx.coroutines.android)
 
 }
