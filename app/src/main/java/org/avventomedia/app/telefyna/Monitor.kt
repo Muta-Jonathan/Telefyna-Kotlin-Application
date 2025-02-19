@@ -656,9 +656,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 }
                             }
 
-                            // Apply cross-fade transition
-                            //handleFadeOutTransition(previousPlayer)
-
                             val current = getPlayerView(true).player
                             instance?.let { current?.removeListener(it) }
                             // Load the new media items
@@ -1054,44 +1051,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             }
         }
     }
-
-    // Updated fade-out animation with coroutines
-//    private fun handleFadeOutTransition(previousPlayer: ExoPlayer?) {
-//        previousPlayer?.let { player ->
-//            lifecycleScope.launch {
-//                val fadeOutAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
-//                    duration = CROSS_FADE_DURATION
-//                    addUpdateListener { animation ->
-//                        // Update player volume on the main thread
-//                        if (player.isPlaying) {
-//                            player.volume = animation.animatedValue as Float
-//                        }
-//                    }
-//                }
-//
-//                fadeOutAnimator.addListener(object : AnimatorListenerAdapter() {
-//                    override fun onAnimationEnd(animation: Animator) {
-//                        lifecycleScope.launch {
-//                            delay(50)
-//                            withContext(Dispatchers.Main) {
-//                                if (player.playbackState != Player.STATE_IDLE &&
-//                                    player.playbackState != Player.STATE_ENDED) {
-//                                    player.pause()
-//                                    player.stop()
-//                                    player.release()
-//                                }
-//                            }
-//                        }
-//                    }
-//                })
-//
-//                withContext(Dispatchers.Main) {
-//                    fadeOutAnimator.start()
-//                    Logger.log(AuditLog.Event.FADE_STARTED, "fade out transition played")
-//                }
-//            }
-//        }
-//    }
 
     private fun hideLowerThird() {
         lowerThirdView?.let {
