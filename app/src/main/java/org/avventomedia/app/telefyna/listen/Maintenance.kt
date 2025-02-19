@@ -8,12 +8,17 @@ import android.os.Build
 import android.webkit.MimeTypeMap
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.rtmp.RtmpDataSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.avventomedia.app.telefyna.Metrics
 import org.avventomedia.app.telefyna.Monitor
 import org.avventomedia.app.telefyna.Utils
@@ -31,6 +36,7 @@ class Maintenance {
 
     private var startedSlotsToday: MutableMap<String, CurrentPlaylist> = HashMap()
     private var pendingIntents: MutableMap<String, PendingIntent> = HashMap()
+    private var maintenanceJob: Job? = null
 
     /**
      * Called when Telefyna is launched and every day at midnight
@@ -68,8 +74,18 @@ class Maintenance {
         @OptIn(UnstableApi::class)
         @RequiresApi(Build.VERSION_CODES.O)
         override fun run() {
-            triggerMaintenance() // Your method call
-            Monitor.instance?.maintenanceHandler?.postDelayed(this, getMillisToMaintenanceTime()) // Schedule the next execution
+            // Cancel any existing maintenance job
+            maintenanceJob?.cancel()
+
+            // Start the maintenance process
+            maintenanceJob = Monitor.instance?.lifecycleScope?.launch {
+                triggerMaintenance()
+                // Schedule the next execution
+                while (isActive) {  // Continuously run until the coroutine is canceled
+                    delay(getMillisToMaintenanceTime())  // Use delay instead of postDelayed
+                    triggerMaintenance()
+                }
+            }
         }
     }
 
@@ -77,12 +93,21 @@ class Maintenance {
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     fun run() {
-        // This may cause a null pointer exception if config is not available and restarts it
-        triggerMaintenance()
-        Logger.log(AuditLog.Event.HEARTBEAT, "ON")
-        Monitor.instance?.maintenanceHandler?.removeCallbacksAndMessages(null)
+        // Cancel any existing maintenance job
+        maintenanceJob?.cancel()
+
         // Start the maintenance process
-        Monitor.instance?.maintenanceHandler?.postDelayed(maintenanceRunnable, getMillisToMaintenanceTime())
+        maintenanceJob = Monitor.instance?.lifecycleScope?.launch {
+            // This may cause a null pointer exception if config is not available and restarts it
+            triggerMaintenance()
+            Logger.log(AuditLog.Event.HEARTBEAT, "ON")
+
+            // Schedule the next execution
+            while (isActive) {  // Continuously run until the coroutine is canceled
+                delay(getMillisToMaintenanceTime())  // Use delay instead of postDelayed
+                triggerMaintenance()
+            }
+        }
     }
 
     @OptIn(UnstableApi::class)
