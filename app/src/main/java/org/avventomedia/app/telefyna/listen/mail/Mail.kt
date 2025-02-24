@@ -126,8 +126,8 @@ class Mail(private val auditAlert: AuditAlert) {
     fun sendEmail() {
         if (auditAlert.alerts.mailer != null) {
             val draft = Draft().apply {
-                from = auditAlert.alerts.mailer!!.email.toString()
-                pass = auditAlert.alerts.mailer!!.pass.toString()
+                from = auditAlert.alerts.mailer?.email.toString()
+                pass = auditAlert.alerts.mailer?.pass.toString()
                 subject = Monitor.instance?.configuration?.let {
                     String.format("%s %s %s Alert: %s",
                         Logger.getToday(),

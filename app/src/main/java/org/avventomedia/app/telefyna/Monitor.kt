@@ -166,23 +166,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun cachePlayingAt(index: Int, seekTo: Long, noProgramTransition: Boolean) {
-        val at = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
-            0
-        } else {
-            nowProgramItem ?: 0
-        }
-
-        var atValue = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
-            startOnePlayProgramItem ?: 0
-        } else {
-            nowProgramItem ?: 0
-        }
-
-        atValue = if (noProgramTransition && Playlist.Type.LOCAL_RESUMING_ONE != currentPlaylist?.type) {
-            atValue - 1
-        } else {
-            atValue
-        }
+        val at = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) 0 else  nowProgramItem ?: 0
+        var atValue = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) (startOnePlayProgramItem ?: 0) else (nowProgramItem ?: 0)
+        atValue = if (noProgramTransition && Playlist.Type.LOCAL_RESUMING_ONE != currentPlaylist?.type) (atValue - 1) else atValue
 
         val programName = getMediaItemName(programItems[at])
         if (programName.isNotBlank()) { // exclude bumpers
@@ -304,7 +290,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         initialiseWithPermissions()
         // Initialize Maintenance
         maintenance = Maintenance()
-        maintenance!!.run()
+        maintenance?.run()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -426,7 +412,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun cacheNowPlaying(noProgramTransition: Boolean) {
         val now = nowPlayingIndex?.let { getPlaylistIndex(it) }
         if (now != null && player != null) {
-            trackingNowPlaying(now, player!!.currentPosition, noProgramTransition)
+            val currentPosition = player?.currentPosition ?: return
+            trackingNowPlaying(now, currentPosition, noProgramTransition)
         }
     }
 
@@ -506,13 +493,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 val firstDefaultIndex = getFirstDefaultIndex()
                 val secondDefaultIndex = getSecondDefaultIndex()
 
-                if (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
+                if (currentPlaylist?.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
                     //handlerJob?.cancel()  // Cancel previous job if exists
                     handlerJob = lifecycleScope.launch {
                         configuration?.wait?.times(1000L)?.let { waitTime ->
                             delay(waitTime)
                             if (Utils.internetConnected()) {
-                                switchNow(nowPlayingIndex!!, isCurrentSlot, context)
+                                nowPlayingIndex?.let { index ->
+                                    switchNow(index, isCurrentSlot, context)
+                                }
                             } else {
                                 fillingForLackOfInternet = true
                                 failedBecauseOfInternetIndex = nowPlayingIndex
@@ -522,7 +511,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     }
                 } else {
                     keepBroadcasting()
-                    if (secondDefaultIndex == nowPlayingIndex && (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() || currentPlaylist!!.type != Playlist.Type.ONLINE && programItems.isEmpty())
+                    if (secondDefaultIndex == nowPlayingIndex && (currentPlaylist?.type == Playlist.Type.ONLINE && !Utils.internetConnected() || currentPlaylist?.type != Playlist.Type.ONLINE && programItems.isEmpty())
                     ) {
                         Logger.log(AuditLog.Event.EMPTY_FILLERS)
                         switchNow(firstDefaultIndex, isCurrentSlot, context)
@@ -530,7 +519,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     } else {
                         if (programItems.isEmpty()) {
                             Logger.log(AuditLog.Event.PLAYLIST_EMPTY_PLAY, getPlayingAtIndexLabel(nowPlayingIndex))
-                            switchNow(currentPlaylist!!.emptyReplacer ?: firstDefaultIndex, isCurrentSlot, context)
+                            switchNow(currentPlaylist?.emptyReplacer ?: firstDefaultIndex, isCurrentSlot, context)
                             return@launch
                         } else {
                             previousPlayer = player
@@ -538,51 +527,47 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 player = buildPlayer(context) // Create a new player
                             }
                             // Reset tracking now playing if the playlist programs were modified
-                            val modifiedOffset = playlistModified(nowPlayingIndex!!)
+                            val modifiedOffset = nowPlayingIndex?.let { index -> playlistModified(index) } ?: return@launch
 
                             if (modifiedOffset > 0) {
                                 Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
-                                resetTrackingNowPlaying(nowPlayingIndex!!)
+                                nowPlayingIndex?.let { index -> resetTrackingNowPlaying(index) } ?: return@launch
                             }
 
-                            nowProgramItem = currentPlaylist!!.seekTo.program
+                            nowProgramItem = currentPlaylist?.seekTo?.program
                             startOnePlayProgramItem = null
-                            var nowPosition = currentPlaylist!!.seekTo.position
+                            var nowPosition = currentPlaylist?.seekTo?.position
 
-                            if (currentPlaylist!!.type != Playlist.Type.ONLINE) {
+                            if (currentPlaylist?.type != Playlist.Type.ONLINE) {
                                 // Resume local resumable programs
-                                if (currentPlaylist!!.isResuming()) {
+                                if (currentPlaylist?.isResuming() == true) {
                                     val previousProgram = getSharedPlaylistMediaItem(
-                                        getPlaylistIndex(nowPlayingIndex!!)
+                                        nowPlayingIndex?.let { index ->  getPlaylistIndex(index)} ?: return@launch
                                     )
                                     var previousSeekTo = getSharedPlaylistSeekTo(
-                                        getPlaylistIndex(nowPlayingIndex!!)
+                                        nowPlayingIndex?.let { index ->  getPlaylistIndex(index)} ?: return@launch
                                     )
 
-                                    if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
+                                    if (nowProgramItem == 0 && (currentPlaylist?.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist?.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
                                         // previousProgram == -1 when it was reset
-                                        nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(
-                                                1
-                                            )
-                                        ) {
+                                        nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
                                             0
-                                        } else if (currentPlaylist!!.repeat?.let {
-                                                canResume(
-                                                    nowPlayingIndex!!,
-                                                    it
-                                                )
+                                        } else if (currentPlaylist?.repeat?.let {
+                                                nowPlayingIndex?.let { index ->
+                                                    canResume(index, it)
+                                                } ?: return@launch
                                             } == true) {
                                             previousProgram.plus(1) // Next program excluding bumpers
                                         } else {
                                             previousProgram
                                         }
                                         previousSeekTo = 0
-                                    } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_SAME) {
+                                    } else if (currentPlaylist?.type == Playlist.Type.LOCAL_RESUMING_SAME) {
                                         nowProgramItem = previousProgram
                                         previousSeekTo = 0
                                     }
 
-                                    currentPlaylist!!.name?.let {
+                                    currentPlaylist?.name?.let {
                                         nowProgramItem?.let { it1 ->
                                             programItems[it1]
                                         }?.let { it2 -> getMediaItemName(it2) }?.let { it3 ->
@@ -590,7 +575,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                                 it, it3, previousSeekTo)
                                         }
                                     }
-                                    if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE) {
+                                    if (currentPlaylist?.type == Playlist.Type.LOCAL_RESUMING_ONE) {
                                         val item = nowProgramItem?.let { programItems[it] }
                                         programItems.clear()
                                         if (item != null) {
@@ -598,11 +583,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                         }
                                         startOnePlayProgramItem = nowProgramItem
                                         nowProgramItem = 0
-                                    } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
-                                        nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
+                                    } else if (currentPlaylist?.type == Playlist.Type.LOCAL_RESUMING) {
+                                        if (nowPosition != null) {
+                                            nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
+                                        }
                                     }
                                 } else {
-                                    val bumperFolder = getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)
+                                    val bumperFolder = currentPlaylist?.isUsingExternalStorage?.let {
+                                        getBumperDirectory(
+                                            it
+                                        )
+                                    }
                                     val generalBumpersIntro = mutableListOf<MediaItem>()
                                     val generalBumpersOutro = mutableListOf<MediaItem>()
                                     val specialBumpersIntro = mutableListOf<MediaItem>()
@@ -611,22 +602,22 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                     val playListOutroBumpers = mutableListOf<MediaItem>()
 
                                     // Prepare intro general bumpers
-                                    if (currentPlaylist!!.isPlayingGeneralBumpers) {
+                                    if (currentPlaylist?.isPlayingGeneralBumpers == true) {
                                         addBumpers(generalBumpersIntro, File("$bumperFolder${File.separator}General-INTRO"), false)
                                         addBumpers(generalBumpersOutro, File("$bumperFolder${File.separator}General-OUTRO"), false)
                                     }
 
                                     // Prepare intro special bumpers
-                                    val specialBumperFolder = currentPlaylist!!.specialBumperFolder
+                                    val specialBumperFolder = currentPlaylist?.specialBumperFolder
                                     if (!specialBumperFolder.isNullOrBlank()) {
                                         addBumpers(specialBumpersIntro, File("$bumperFolder${File.separator}$specialBumperFolder-INTRO"), false)
                                         addBumpers(specialBumpersOutro, File("$bumperFolder${File.separator}$specialBumperFolder-OUTRO"), false)
                                     }
 
                                     // Prepare playlist specific bumpers
-                                    addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
+                                    addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist?.urlOrFolder?.split("#")
                                         ?.get(0)}-INTRO"), false)
-                                    addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
+                                    addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist?.urlOrFolder?.split("#")
                                         ?.get(0)}-OUTRO"), false)
 
                                     // Add intro bumpers
@@ -644,50 +635,52 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 }
 
                                 if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
-                                    val seek = seekImmediateNonCompletedSlot(currentPlaylist!!, programItems)
-                                    if (seek != null) {
-                                        nowProgramItem = if (seek.program == (programItems.size).minus(1)) seek.program else nowProgramItem?.plus(seek.program)
-                                        nowPosition = if (seek.program == (programItems.size).minus(1)) seek.position else nowProgramItem?.plus(seek.position)!!
-                                    } else { // Slot is ended, switch to fillers
-                                        Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getPlayingAtIndexLabel(nowPlayingIndex))
-                                        switchNow(secondDefaultIndex, false, context)
-                                        return@launch
-                                    }
+                                    val seek = currentPlaylist?.let { playlist -> seekImmediateNonCompletedSlot(playlist, programItems) } ?: return@launch
+                                    nowProgramItem = if (seek.program == (programItems.size).minus(1)) seek.program else nowProgramItem?.plus(seek.program)
+                                    nowPosition = if (seek.program == (programItems.size).minus(1)) seek.position else nowProgramItem?.plus(seek.position)
                                 }
                             }
 
                             val current = getPlayerView(true).player
                             instance?.let { current?.removeListener(it) }
                             // Load the new media items
-                            programItems.let { player!!.setMediaItems(it) }
-                            nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
-                            player!!.prepare()
-                            if (!currentPlaylist!!.isResuming()) {
-                                player!!.volume = 0f
+                            programItems.let { player?.setMediaItems(it) }
+                            nowProgramItem?.let {
+                                if (nowPosition != null) {
+                                    player?.seekTo(it, nowPosition)
+                                }
+                            }
+                            player?.prepare()
+                            if (currentPlaylist?.isResuming() == false) {
+                                player?.volume = 0f
                                 val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
                                     duration = CROSS_FADE_DURATION
                                     addUpdateListener {
-                                        player!!.volume = it.animatedValue as Float
+                                        player?.volume = it.animatedValue as Float
                                     }
                                 }
                                 fadeInAnimator.start()
                             }
                             Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
 
-                            instance?.let { player!!.addListener(it) }
-                            player!!.playWhenReady = true
+                            instance?.let { player?.addListener(it) }
+                            player?.playWhenReady = true
                             nowProgramItem?.let { programItems[it] }
                                 ?.let { getMediaItemName(it) }?.let {
-                                    Logger.log(
-                                        if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
-                                        getNowPlayingPlaylistLabel(),
-                                        Utils.formatDuration(nowPosition),
-                                        it
-                                    )
+                                    nowPosition?.let { it1 -> Utils.formatDuration(it1) }?.let { it2 ->
+                                        Logger.log(
+                                            if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
+                                            getNowPlayingPlaylistLabel(),
+                                            it2,
+                                            it
+                                        )
+                                    }
                                 }
                             // Log now playing
                             cacheNowPlaying(false)
-                            triggerGraphics(nowPosition)
+                            if (nowPosition != null) {
+                                triggerGraphics(nowPosition)
+                            }
                         }
                     }
                 }
@@ -773,7 +766,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
                 Player.STATE_BUFFERING -> {
                     if (currentPlaylist?.type == Playlist.Type.ONLINE) {
-                        player?.seekTo(player!!.contentDuration) // hack
+                        player?.contentDuration?.let { it1 -> player?.seekTo(it1) } // hack
                     }
                 }
             }
@@ -791,7 +784,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         nowPlayingIndex?.let {
-            nowProgramItem = nowProgramItem!! + 1
+            nowProgramItem = nowProgramItem?.plus(1)
             cacheNowPlaying(false)
             mediaItem?.let { it1 -> getMediaItemName(it1) }?.let { it2 ->
                 Logger.log(AuditLog.Event.PLAYLIST_ITEM_CHANGE, getNowPlayingPlaylistLabel(),
@@ -819,7 +812,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             }
             is UnrecognizedInputFormatException -> {
                 if (player?.isCurrentWindowSeekable == true) {
-                    nowProgramItem?.plus(1)?.let { player!!.seekTo(it, 0) }
+                    player?.seekTo((nowProgramItem ?: 0) + 1, 0)
                 }
             }
             is MediaCodecRenderer.DecoderInitializationException -> {
@@ -828,7 +821,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
             }
             else -> {
-                if (!player?.isPlaying!!) {
+                if (player?.isPlaying == false) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
                     }
@@ -839,7 +832,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
 
     private fun getPlayingAtIndexLabel(index: Int?): String {
-        val playlistName = playlistByIndex[index?.let { getPlaylistIndex(it) }!!].name
+        val playlistName = index?.let { getPlaylistIndex(it) }?.let { playlistByIndex[it].name }
         return "$playlistName #$index"
     }
 
@@ -1116,21 +1109,21 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (Utils.validPlayableItem(lowerThirdClip)) {
             Logger.log(AuditLog.Event.LOWER_THIRD_ON, path)
             lowerThirdView = findViewById(R.id.lowerThird) // initiate a video view
-            lowerThirdView!!.setVideoURI(Uri.fromFile(lowerThirdClip))
-            lowerThirdView!!.start()
-            lowerThirdView!!.visibility = View.VISIBLE
+            lowerThirdView?.setVideoURI(Uri.fromFile(lowerThirdClip))
+            lowerThirdView?.start()
+            lowerThirdView?.visibility = View.VISIBLE
 
-            lowerThirdView!!.setOnCompletionListener {
+            lowerThirdView?.setOnCompletionListener {
                 if (lowerThird.replays >= lowerThirdLoop) {
                     lowerThirdLoop++
-                    lowerThirdView!!.start()
+                    lowerThirdView?.start()
                 } else {
                     hideLowerThird()
                     lowerThirdLoop = 1
                 }
             }
 
-            lowerThirdView!!.setOnErrorListener { _, _, _ ->
+            lowerThirdView?.setOnErrorListener { _, _, _ ->
                 Logger.log(AuditLog.Event.ERROR, "Failed to play ${lowerThird.file}")
                 true
             }
@@ -1280,7 +1273,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     if (nowPlayingIndex == getSecondDefaultIndex() && fillingForLackOfInternet && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
                         fillingForLackOfInternet = false
                         Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                        switchNow(failedBecauseOfInternetIndex!!, false, this@Monitor)
+                        failedBecauseOfInternetIndex?.let { index ->
+                            switchNow(index, false, this@Monitor)
+                        } ?: return@withContext
                         failedBecauseOfInternetIndex = null
                         return@withContext // Exit the coroutine block
                     } else {
@@ -1295,9 +1290,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 if (delay != null) {
                                     Logger.log(AuditLog.Event.STUCK, delay / 1000)
                                 }
-                                switchNow(nowPlayingIndex!!, false, this@Monitor)
+                                nowPlayingIndex?.let { switchNow(it, false, this@Monitor) }
                             } else {
-                                offAir = player == null || !player!!.isPlaying
+                                offAir = player == null || player?.isPlaying == false
                             }
                         }
                     }

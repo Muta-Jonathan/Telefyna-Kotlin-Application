@@ -1,5 +1,6 @@
 package org.avventomedia.app.telefyna
 
+import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -59,6 +60,7 @@ object Utils {
 
             if (Playlist.Type.LOCAL_RANDOMIZED == playlist.type) {
                 programs.shuffle()
+                programs.shuffle()
             }
         }
     }
@@ -68,6 +70,7 @@ object Utils {
         return email.matches(Regex(regex))
     }
 
+    @SuppressLint("DefaultLocale")
     fun formatDuration(millis: Long): String {
         val hours = TimeUnit.MILLISECONDS.toHours(millis)
         val mins = TimeUnit.MILLISECONDS.toMinutes(millis - TimeUnit.HOURS.toMillis(hours))

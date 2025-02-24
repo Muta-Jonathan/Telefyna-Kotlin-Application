@@ -46,12 +46,13 @@ class Maintenance {
     private fun triggerMaintenance() {
         cancelPendingIntents()
         Monitor.instance?.initialise()
+        val monitorInstance = Monitor.instance ?: return
         // Switch to firstDefault when automation is turned off
-        if (Monitor.instance?.configuration?.isAutomationDisabled == true) {
-            val defaultIndex = Monitor.instance!!.getFirstDefaultIndex()
-            val playlist = Monitor.instance?.configuration?.playlists?.get(defaultIndex)
-            playlist?.let { Monitor.instance!!.addPlayListByIndex(it) }
-            Monitor.instance!!.switchNow(defaultIndex, false, Monitor.instance!!)
+        if (monitorInstance.configuration?.isAutomationDisabled == true) {
+            val defaultIndex =monitorInstance.getFirstDefaultIndex()
+            val playlist = defaultIndex.let { Monitor.instance?.configuration?.playlists?.get(it) }
+            playlist?.let { monitorInstance.addPlayListByIndex(it) }
+            Monitor.instance?.switchNow(defaultIndex, false, monitorInstance)
         } else {
             startedSlotsToday = HashMap()
             pendingIntents = HashMap()
@@ -223,13 +224,14 @@ class Maintenance {
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     private fun playCurrentSlot() {
+        val monitorInstance = Monitor.instance ?: return
         if (startedSlotsToday.isNotEmpty()) {
             val slots = startedSlotsToday.keys.toList().sortedDescending()
             val currentPlaylist = startedSlotsToday[slots[0]]
             // isCurrentSlot should only be true here
-            Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, Monitor.instance!!)
+            Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, monitorInstance)
         } else { // Play first default
-            Monitor.instance?.let { Monitor.instance!!.switchNow(it.getFirstDefaultIndex(), false, Monitor.instance!!) }
+            Monitor.instance?.let { Monitor.instance?.switchNow(it.getFirstDefaultIndex(), false, monitorInstance) }
         }
     }
 

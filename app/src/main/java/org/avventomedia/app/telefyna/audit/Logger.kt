@@ -52,7 +52,9 @@ class Logger {
             val config = Monitor.instance?.configuration
             if (config != null && config.alerts?.isEnabled== true && (event.getCategory() == AuditLog.Event.Category.ADMIN || event.getCategory() == AuditLog.Event.Category.BROADCAST)) {
                 if (Utils.internetConnected()) {
-                    SendEmail().execute(AuditAlert(config.alerts!!, event, msg))
+                    config.alerts?.let { alerts ->
+                        SendEmail().execute(AuditAlert(alerts, event, msg))
+                    } ?: return
                 } else {
                     log(AuditLog.Event.NO_INTERNET, "Sending emails failed, no internet connection")
                 }
@@ -71,20 +73,19 @@ class Logger {
         @OptIn(UnstableApi::class)
         fun getAuditsForNDays(days: Int): List<String> {
             val audits = mutableListOf<String>()
-            val auditDir = File(Monitor.instance?.getAuditFilePath(Monitor.instance!!,"") ?: "")
+            val auditDir = File(Monitor.instance?.let { it.getAuditFilePath(it,"") } ?: "")
             if (auditDir.exists()) {
                 val auditContents = auditDir.listFiles()
                 if (auditContents != null && auditContents.isNotEmpty()) {
                     for (i in 0 until days) {
-                        val audit: String
-                        audit = if (i == 0) ({
+                        val audit: String = if (i == 0) ({
                             Monitor.instance?.getAuditLogsFilePath(getToday())
                         }).toString() else ({
                             val d = Calendar.getInstance().apply {
                                 add(Calendar.DAY_OF_YEAR, -i) // - one day
                             }
                             Monitor.instance?.dateFormat?.let {
-                                Monitor.instance!!.getAuditLogsFilePath(
+                                Monitor.instance?.getAuditLogsFilePath(
                                     it.format(d.time))
                             }
                         }).toString()

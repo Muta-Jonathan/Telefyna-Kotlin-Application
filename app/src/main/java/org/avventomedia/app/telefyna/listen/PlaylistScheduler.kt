@@ -19,11 +19,15 @@ class PlaylistScheduler : BroadcastReceiver() {
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onReceive(context: Context, intent: Intent) {
+        val monitorInstance = Monitor.instance ?: return
         try {
-            Monitor.instance?.switchNow(
-                intent.getIntExtra(PLAYLIST_INDEX, Monitor.instance!!.getFirstDefaultIndex()),
-                false, Monitor.instance!!
-            )
+            Monitor.instance?.getFirstDefaultIndex()
+                ?.let { intent.getIntExtra(PLAYLIST_INDEX, it) }?.let {
+                    monitorInstance.switchNow(
+                        it,
+                        false, monitorInstance
+                    )
+                }
         } catch (e: Exception) {
             e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }
         }

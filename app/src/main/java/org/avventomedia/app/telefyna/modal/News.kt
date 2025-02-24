@@ -26,7 +26,7 @@ data class News(
         val mess = mutableListOf<String>()
 
         if (messages?.isNotBlank() == true) {
-            messages!!.split(Graphics.MESSAGE_SPLITTER).forEach { m ->
+            messages?.split(Graphics.MESSAGE_SPLITTER)?.forEach { m ->
                 if (m.isNotBlank()) {
                     mess.add(m.trim())
                 }
