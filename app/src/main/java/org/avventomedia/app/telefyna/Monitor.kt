@@ -473,14 +473,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             val playlist = playlistByIndex[index]
             Logger.log(AuditLog.Event.PLAYLIST, getPlayingAtIndexLabel(index), GsonBuilder().setPrettyPrinting().create().toJson(playlist))
 
-            // Re-maintain if init file exists; drop it and reload schedule
-            val reInitializerFile = getReInitializerFile()
-            if (reInitializerFile.exists()) {
-                reInitializerFile.delete()
-                maintenance?.run()
-                return@launch
+            withContext(Dispatchers.IO) {
+                // Re-maintain if init file exists; drop it and reload schedule
+                val reInitializerFile = getReInitializerFile()
+                if (reInitializerFile.exists()) {
+                    reInitializerFile.delete()
+                    maintenance?.run()
+                    return@withContext
+                }
             }
-
             if (!samePlaylistPlaying(index) || playTheSame(index)) { // Leave current program to proceed if it's the same being loaded
                 // Setup objects; skip playlist with nothing to play
                 nowPlayingIndex = index
@@ -640,45 +641,49 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 }
                             }
 
-                            val current = getPlayerView(true).player
-                            instance?.let { current?.removeListener(it) }
-                            // Load the new media items
-                            programItems.let { player?.setMediaItems(it) }
-                            nowProgramItem?.let {
-                                if (nowPosition != null) {
-                                    player?.seekTo(it, nowPosition)
-                                }
-                            }
-                            player?.prepare()
-//                            if (currentPlaylist?.isResuming() == false) {
-//                                player?.volume = 0f
-//                                val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-//                                    duration = CROSS_FADE_DURATION
-//                                    addUpdateListener {
-//                                        player?.volume = it.animatedValue as Float
-//                                    }
-//                                }
-//                                fadeInAnimator.start()
-//                            }
-//                            Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
-
-                            instance?.let { player?.addListener(it) }
-                            player?.playWhenReady = true
-                            nowProgramItem?.let { programItems[it] }
-                                ?.let { getMediaItemName(it) }?.let {
-                                    nowPosition?.let { it1 -> Utils.formatDuration(it1) }?.let { it2 ->
-                                        Logger.log(
-                                            if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
-                                            getNowPlayingPlaylistLabel(),
-                                            it2,
-                                            it
-                                        )
+                            withContext(Dispatchers.Main) {
+                                val current = getPlayerView(true).player
+                                instance?.let { current?.removeListener(it) }
+                                // Load the new media items
+                                programItems.let { player?.setMediaItems(it) }
+                                nowProgramItem?.let {
+                                    if (nowPosition != null) {
+                                        player?.seekTo(it, nowPosition)
                                     }
                                 }
-                            // Log now playing
-                            cacheNowPlaying(false)
-                            if (nowPosition != null) {
-                                triggerGraphics(nowPosition)
+                                player?.prepare()
+
+                                if (currentPlaylist?.isResuming() == false) {
+                                    player?.volume = 0f
+                                    val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                                        duration = CROSS_FADE_DURATION
+                                        addUpdateListener {
+                                            player?.volume = it.animatedValue as Float
+                                        }
+                                    }
+                                    fadeInAnimator.start()
+                                    Logger.log(AuditLog.Event.FADE_PLAYED, "fade in transition")
+                                }
+
+                                instance?.let { player?.addListener(it) }
+                                player?.playWhenReady = true
+                                nowProgramItem?.let { programItems[it] }
+                                    ?.let { getMediaItemName(it) }?.let {
+                                        nowPosition?.let { it1 -> Utils.formatDuration(it1) }
+                                            ?.let { it2 ->
+                                                Logger.log(
+                                                    if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
+                                                    getNowPlayingPlaylistLabel(),
+                                                    it2,
+                                                    it
+                                                )
+                                            }
+                                    }
+                                // Log now playing
+                                cacheNowPlaying(false)
+                                if (nowPosition != null) {
+                                    triggerGraphics(nowPosition)
+                                }
                             }
                         }
                     }
