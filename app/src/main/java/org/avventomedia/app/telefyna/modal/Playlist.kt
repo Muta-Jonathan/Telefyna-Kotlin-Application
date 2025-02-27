@@ -1,5 +1,6 @@
 package org.avventomedia.app.telefyna.modal
 
+import android.annotation.SuppressLint
 import java.text.SimpleDateFormat
 import java.util.Calendar
 
@@ -45,7 +46,7 @@ data class Playlist(
     // Index of playlist to replace with when empty
     var emptyReplacer: Int? = null,
     var seekTo: Seek = Seek(0, 0),
-    var repeat: Repeat? = null
+    var repeat: Repeat? = Repeat.DAILY
 ) {
 
     val isPlayingGeneralBumpers: Boolean
@@ -86,8 +87,9 @@ data class Playlist(
         return null
     }
 
+    @SuppressLint("SimpleDateFormat")
     fun scheduledToday(): Boolean {
-        if (active == null || !active || start.isNullOrBlank()) {
+        if (!active || start.isNullOrBlank()) {
             return false
         } else if (days.isNullOrEmpty()) {
             return true

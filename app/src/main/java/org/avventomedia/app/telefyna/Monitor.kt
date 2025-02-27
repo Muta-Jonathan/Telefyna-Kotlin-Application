@@ -550,16 +550,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
                                     if (nowProgramItem == 0 && (currentPlaylist?.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist?.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
                                         // previousProgram == -1 when it was reset
-                                        nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
-                                            0
-                                        } else if (currentPlaylist?.repeat?.let {
+                                        nowProgramItem = when {
+                                            previousProgram == -1 || previousProgram == (programItems.size - 1) -> 0 // First or last item
+                                            nowPlayingIndex != null && currentPlaylist?.repeat?.let {
                                                 nowPlayingIndex?.let { index ->
                                                     canResume(index, it)
-                                                } ?: return@launch
-                                            } == true) {
-                                            previousProgram.plus(1) // Next program excluding bumpers
-                                        } else {
-                                            previousProgram
+                                                }
+                                            } == true ->
+                                                    previousProgram + 1 // Next program excluding bumpers
+                                            else -> previousProgram
                                         }
                                         previousSeekTo = 0
                                     } else if (currentPlaylist?.type == Playlist.Type.LOCAL_RESUMING_SAME) {
@@ -651,17 +650,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 }
                             }
                             player?.prepare()
-                            if (currentPlaylist?.isResuming() == false) {
-                                player?.volume = 0f
-                                val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                                    duration = CROSS_FADE_DURATION
-                                    addUpdateListener {
-                                        player?.volume = it.animatedValue as Float
-                                    }
-                                }
-                                fadeInAnimator.start()
-                            }
-                            Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
+//                            if (currentPlaylist?.isResuming() == false) {
+//                                player?.volume = 0f
+//                                val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+//                                    duration = CROSS_FADE_DURATION
+//                                    addUpdateListener {
+//                                        player?.volume = it.animatedValue as Float
+//                                    }
+//                                }
+//                                fadeInAnimator.start()
+//                            }
+//                            Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
 
                             instance?.let { player?.addListener(it) }
                             player?.playWhenReady = true
