@@ -37,7 +37,7 @@ class Maintenance {
      */
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun triggerMaintenance() {
+    fun triggerMaintenance() {
         cancelPendingIntents()
         Monitor.instance?.initialise()
         // Switch to firstDefault when automation is turned off
@@ -64,13 +64,20 @@ class Maintenance {
         }
     }
 
-    val maintenanceRunnable = object : Runnable {
-        @OptIn(UnstableApi::class)
-        @RequiresApi(Build.VERSION_CODES.O)
-        override fun run() {
-            triggerMaintenance() // Your method call
-            Monitor.instance?.maintenanceHandler?.postDelayed(this, getMillisToMaintenanceTime()) // Schedule the next execution
-        }
+    @OptIn(UnstableApi::class)
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun scheduleNextMaintenance() {
+        val millisToMaintenance = getMillisToMaintenanceTime()
+        val intent = Intent(Monitor.instance, MaintenanceReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            Monitor.instance, 1, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        Monitor.instance?.alarmManager?.setExact(
+            AlarmManager.RTC_WAKEUP,
+            System.currentTimeMillis() + millisToMaintenance,
+            pendingIntent
+        )
     }
 
 
@@ -80,9 +87,7 @@ class Maintenance {
         // This may cause a null pointer exception if config is not available and restarts it
         triggerMaintenance()
         Logger.log(AuditLog.Event.HEARTBEAT, "ON")
-        Monitor.instance?.maintenanceHandler?.removeCallbacksAndMessages(null)
-        // Start the maintenance process
-        Monitor.instance?.maintenanceHandler?.postDelayed(maintenanceRunnable, getMillisToMaintenanceTime())
+        scheduleNextMaintenance()
     }
 
     @OptIn(UnstableApi::class)

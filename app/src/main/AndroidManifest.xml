@@ -36,6 +36,12 @@
             </intent-filter>
         </activity>
         <receiver android:name=".listen.PlaylistScheduler"  android:exported="true"/>
+        <receiver android:name=".listen.MaintenanceReceiver" android:exported="false" />
+        <receiver android:name=".listen.BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
 
         <receiver android:name=".listen.AutoStart" android:exported="true">
             <intent-filter>

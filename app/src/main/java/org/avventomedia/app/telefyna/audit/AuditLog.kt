@@ -46,8 +46,8 @@ class AuditLog {
         DISPLAY_PROGRAM_WATERMARK_OFF("Turning OFF Program Watermark"),
         DISPLAY_LIVE_LOGO_ON("Turning ON Live Logo at the %s"),
         DISPLAY_REPEAT_PROGRAM_WATERMARK_ON("Turning ON Repeat Program Watermark"),
-        FADE_STARTED("Fade started, %s"),
-        FADE_STOPPED("Fade stopped, %s"),
+        DEBUG("Debug: %s"),
+        FADE_PLAYED("Fade played, %s"),
 
 
         // system

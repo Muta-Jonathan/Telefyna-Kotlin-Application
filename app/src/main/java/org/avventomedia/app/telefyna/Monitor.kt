@@ -1,8 +1,6 @@
 package org.avventomedia.app.telefyna
 
 import android.Manifest
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
@@ -10,8 +8,10 @@ import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -92,6 +92,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val PERMISSION_REQUEST_CODE = 100
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
         var instance: Monitor? = null // for player am using media3
+        private const val KEEP_ON_AIR_ACTION = "org.avventomedia.app.telefyna.KEEP_ON_AIR"
+        private const val CROSS_FADE_DURATION = 1000L // Reduce fade duration for faster switching to 2seconds
     }
 
     private lateinit var sharedPreferences: SharedPreferences
@@ -107,7 +109,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     var maintenanceHandler: Handler? = null
         private set
 
-    private var maintenance: Maintenance? = null
+    var maintenance: Maintenance? = null
 
     private var nowPlayingIndex: Int? = null
     private var failedBecauseOfInternetIndex: Int? = null
@@ -123,11 +125,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var lowerThirdView: VideoView? = null
 
     private var lowerThirdLoop = 1
-    private var keepOnAir: Runnable? = null
     private var offAir = false
     private var fillingForLackOfInternet = false
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
+    private val keepOnAirReceiver = KeepOnAirReceiver()
 
     var dateFormat: SimpleDateFormat? = null
         private set
@@ -264,7 +266,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return String.format(PLAYLIST_PLAY_FORMAT, PLAYLIST_LAST_PLAYED, index)
     }
 
-    @SuppressLint("MissingInflatedId")
+    @SuppressLint("MissingInflatedId", "UnspecifiedRegisterReceiverFlag")
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -296,6 +298,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
         // allow network etc actions since telefyna depends on all of these
         StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().permitAll().build())
+
+        // Register receiver with RECEIVER_NOT_EXPORTED flag for Android 14+
+        val filter = IntentFilter(KEEP_ON_AIR_ACTION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // API 33+
+            registerReceiver(keepOnAirReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(keepOnAirReceiver, filter)
+        }
 
         // Initialize permissions
         initialiseWithPermissions()
@@ -421,7 +431,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun cacheNowPlaying(noProgramTransition: Boolean) {
         val playerView = getPlayerView(false)
         val now = nowPlayingIndex?.let { getPlaylistIndex(it) }
-        if (now != null && playerView != null && player != null) {
+        if (now != null && player != null) {
             trackingNowPlaying(now, player!!.currentPosition, noProgramTransition)
         }
     }
@@ -494,12 +504,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             nowPlayingIndex = index
             currentPlaylist = playlist
             programItems = maintenance?.retrievePrograms(currentPlaylist) as MutableList<MediaItem>
-            instance?.handler?.removeCallbacksAndMessages(null)
+
             val firstDefaultIndex = getFirstDefaultIndex()
             val secondDefaultIndex = getSecondDefaultIndex()
 
             if (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
                 (configuration?.wait)?.times(1000L)?.let {
+                    instance?.handler?.removeCallbacksAndMessages(null) // Cleanup before scheduling delay
                     instance?.handler?.postDelayed({
                         if (Utils.internetConnected()) {
                             switchNow(nowPlayingIndex!!, isCurrentSlot, context)
@@ -523,13 +534,21 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         switchNow(currentPlaylist!!.emptyReplacer ?: firstDefaultIndex, isCurrentSlot, context)
                         return
                     } else {
+                        // Assign current player to previousPlayer before creating a new one
                         previousPlayer = player
-                        if (player == null) {
-                            player = buildPlayer(context) // Create a new player
+
+                        // Immediately release previous player
+                        if (previousPlayer != null) {
+                            previousPlayer?.stop()
+                            previousPlayer?.release()
+                            previousPlayer = null
+                            Logger.log(AuditLog.Event.DEBUG, "Previous player stopped and released")
                         }
+
+                        player = buildPlayer(context) // Create a new player
+
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
-                        val crossFadeDuration = 2000L // Fade duration in milliseconds, (crossfadeDuration / 1000) This will be 2 seconds
 
                         if (modifiedOffset > 0) {
                             Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
@@ -647,43 +666,27 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             }
                         }
 
-                        // Apply crossfade transition
-                        if (previousPlayer != null) {
-                            previousPlayer?.volume = 1f
-                            val fadeOutAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
-                                duration = crossFadeDuration
-                                addUpdateListener {
-                                    previousPlayer?.volume = it.animatedValue as Float
-                                }
-                            }
-                            fadeOutAnimator.addListener(object : AnimatorListenerAdapter() {
-                                override fun onAnimationEnd(animation: Animator) {
-                                    previousPlayer?.stop()
-                                    previousPlayer?.release()
-                                }
-                            })
-                            fadeOutAnimator.start()
-                            Logger.log(AuditLog.Event.FADE_STARTED, "fade out transition played")
-                        }
-
-                        val current = getPlayerView(true).player
-                        instance?.let { current?.removeListener(it) }
+                        val playerView = getPlayerView(true)
+                        playerView.player?.removeListener(this) // Remove old listener
                         // Load the new media items
                         programItems.let { player!!.setMediaItems(it) }
                         nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
                         player!!.prepare()
-                        player!!.volume = 0f
-                        val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                            duration = crossFadeDuration
-                            addUpdateListener {
-                                player!!.volume = it.animatedValue as Float
+                        // Fade-in for new player (if desired, otherwise skip)
+                        if (!currentPlaylist!!.isResuming()) {
+                            player!!.volume = 0f
+                            val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                                duration = CROSS_FADE_DURATION
+                                addUpdateListener { player!!.volume = it.animatedValue as Float }
                             }
+                            fadeInAnimator.start()
+                            Logger.log(AuditLog.Event.FADE_PLAYED, "fade in transition played")
                         }
-                        fadeInAnimator.start()
-                        Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
 
                         instance?.let { player!!.addListener(it) }
                         player!!.playWhenReady = true
+                        playerView.player = player // Explicitly attach new player to PlayerView
+                        player!!.addListener(this) // Add listener once
                         nowProgramItem?.let { programItems[it] }
                             ?.let { getMediaItemName(it) }?.let {
                                 Logger.log(
@@ -869,8 +872,18 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         super.onDestroy()
         shutDownHook()
         player?.release()
+        previousPlayer?.release() // Ensure any lingering player is released
         maintenanceHandler?.removeCallbacksAndMessages(null)
         handler?.removeCallbacksAndMessages(null)
+        // Unregister receiver and cancel alarm
+        unregisterReceiver(keepOnAirReceiver)
+        val intent = Intent(KEEP_ON_AIR_ACTION)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager?.cancel(pendingIntent)
+
     }
 
     private fun getLastModifiedFor(index: Int): Long {
@@ -1239,15 +1252,23 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     @RequiresApi(Build.VERSION_CODES.O)
     private fun keepBroadcasting() {
         nowPlayingIndex?.let {
-            if (keepOnAir != null) {
-                handler?.removeCallbacks(keepOnAir!!)
-            }
-
-            val delay = (configuration?.wait)?.times(1000L)
-            if (delay != null) {
-                handler?.postDelayed({ keepOnAir() }, delay)
-            }
+            scheduleKeepOnAir()
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun scheduleKeepOnAir() {
+        val delay = (configuration?.wait ?: 30) * 1000L // Default to 30 seconds if null
+        val intent = Intent("org.avventomedia.app.telefyna.KEEP_ON_AIR")
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager?.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            System.currentTimeMillis() + delay,
+            pendingIntent
+        )
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -1325,6 +1346,44 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             }
         } catch (e: IOException) {
             e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }
+        }
+    }
+
+    inner class KeepOnAirReceiver : BroadcastReceiver() {
+        @RequiresApi(Build.VERSION_CODES.O)
+        override fun onReceive(context: Context, intent: Intent) {
+            when {
+                getRebootFile().exists() -> {
+                    getRebootFile().delete()
+                    rebootDevice()
+                }
+                getRestartFile().exists() -> {
+                    getRestartFile().delete()
+                    restartApp()
+                }
+                else -> {
+                    if (getBackupConfigFile().exists()) backupConfig(false)
+                    if (getBackupConfigResetFile().exists()) backupConfig(true)
+
+                    if (nowPlayingIndex == getSecondDefaultIndex() &&
+                        fillingForLackOfInternet &&
+                        Utils.internetConnected() &&
+                        failedBecauseOfInternetIndex != null) {
+                        fillingForLackOfInternet = false
+                        Logger.log(AuditLog.Event.INTERNET_RESTORED)
+                        switchNow(failedBecauseOfInternetIndex!!, false, this@Monitor)
+                        failedBecauseOfInternetIndex = null
+                    } else {
+                        offAir = player == null || !player!!.isPlaying
+                        if (offAir) {
+                            offAir = false
+                            Logger.log(AuditLog.Event.STUCK, (configuration?.wait ?: 0).toLong())
+                            switchNow(nowPlayingIndex!!, false, this@Monitor)
+                        }
+                        scheduleKeepOnAir() // Schedule the next execution
+                    }
+                }
+            }
         }
     }
 }
