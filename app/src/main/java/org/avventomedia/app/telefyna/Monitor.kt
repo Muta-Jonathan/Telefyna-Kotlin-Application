@@ -840,7 +840,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onDestroy() {
         super.onDestroy()
         shutDownHook()
-        player?.release()
+        player?.release() // Release ExoPlayer resources
+        player = null // Allow garbage collection
         maintenanceHandler?.removeCallbacksAndMessages(null)
         handler?.removeCallbacksAndMessages(null)
         // Unregister receiver and cancel alarm
@@ -852,6 +853,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         )
         alarmManager?.cancel(pendingIntent)
 
+    }
+
+    override fun onStop() {
+        super.onStop()
+        player?.pause()
     }
 
     private fun getLastModifiedFor(index: Int): Long {
