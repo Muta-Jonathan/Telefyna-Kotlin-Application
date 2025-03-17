@@ -68,18 +68,18 @@ class Maintenance {
     @RequiresApi(Build.VERSION_CODES.O)
     fun scheduleNextMaintenance() {
         val millisToMaintenance = getMillisToMaintenanceTime()
-        val intent = Intent(Monitor.instance, MaintenanceReceiver::class.java)
+        val monitorInstance = Monitor.instance ?: return
+        val intent = Intent(monitorInstance, MaintenanceReceiver::class.java)
         val pendingIntent = PendingIntent.getBroadcast(
-            Monitor.instance, 1, intent,
+            monitorInstance, 1, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        Monitor.instance?.alarmManager?.setExact(
+        monitorInstance.alarmManager?.setExact(
             AlarmManager.RTC_WAKEUP,
             System.currentTimeMillis() + millisToMaintenance,
             pendingIntent
         )
     }
-
 
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)

@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "org.avventomedia.app.telefyna"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "org.avventomedia.app.telefyna"
@@ -46,6 +46,7 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.media3.datasource.rtmp)
+    implementation(libs.androidx.work.runtime.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
