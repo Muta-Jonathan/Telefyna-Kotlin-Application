@@ -35,6 +35,9 @@ class AuditLog {
         PLAYLIST_MODIFIED("Playlist: %s is resetting resuming since it was modified %s seconds ago"),
         PLAYLIST_ITEM_CHANGE("Playing playlist: %s now playing: %s"),
         PLAYLIST_COMPLETED("$SPLITTER] Completed playing playlist: %s"),
+        PLAYLIST_ERROR("$SPLITTER] Error playing playlist: %s"),
+
+        // player
         DISPLAY_LOGO_OFF("Turning OFF Logo"),
         DISPLAY_LOGO_ON("Turning ON Logo at the %s"),
         DISPLAY_NEWS_ON("Displaying news/info ticker with messages: %s"),
@@ -46,8 +49,7 @@ class AuditLog {
         DISPLAY_PROGRAM_WATERMARK_OFF("Turning OFF Program Watermark"),
         DISPLAY_LIVE_LOGO_ON("Turning ON Live Logo at the %s"),
         DISPLAY_REPEAT_PROGRAM_WATERMARK_ON("Turning ON Repeat Program Watermark"),
-        FADE_STARTED("Fade started, %s"),
-        FADE_STOPPED("Fade stopped, %s"),
+        FADE_PLAYED("Fade played, %s"),
 
 
         // system
@@ -68,7 +70,7 @@ class AuditLog {
             val schedulers = arrayOf(
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,
                 PLAYLIST_EMPTY_PLAY, PLAYLIST_MODIFIED, PLAYLIST_ITEM_CHANGE,
-                PLAYLIST_COMPLETED, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
+                PLAYLIST_COMPLETED, PLAYLIST_ERROR, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
                 DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
                 DISPLAY_PROGRAM_WATERMARK_OFF, DISPLAY_LIVE_LOGO_ON,
                 DISPLAY_REPEAT_PROGRAM_WATERMARK_ON

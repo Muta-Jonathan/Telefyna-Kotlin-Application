@@ -112,9 +112,13 @@ data class Playlist(
         specialBumperFolder = parent.specialBumperFolder
         emptyReplacer = parent.emptyReplacer
         color = parent.color
+        repeat = when {
+            parent.repeat == null -> null
+            repeat == null -> parent.repeat
+            else -> repeat
+        }
         active = when {
-            parent.active == false -> false
-            active == null -> parent.active
+            !parent.active -> false
             else -> active
         }
         return this

@@ -59,6 +59,7 @@ object Utils {
 
             if (Playlist.Type.LOCAL_RANDOMIZED == playlist.type) {
                 programs.shuffle()
+                programs.shuffle()
             }
         }
     }

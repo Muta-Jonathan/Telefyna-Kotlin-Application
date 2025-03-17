@@ -1,15 +1,16 @@
 package org.avventomedia.app.telefyna
 
 import android.Manifest
-import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -18,13 +19,13 @@ import android.net.Uri
 import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
-import android.os.DeadObjectException
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.StrictMode
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
 import android.widget.ImageView
 import android.widget.Toast
 import android.widget.VideoView
@@ -45,15 +46,8 @@ import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import kotlinx.coroutines.isActive
 import org.apache.commons.lang3.StringUtils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
@@ -96,8 +90,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val REQUEST_CODE_PERMISSIONS = 123
         private const val PERMISSION_REQUEST_CODE = 100
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
-        private const val CROSS_FADE_DURATION = 10000L // Reduce fade duration for faster switching to 10seconds
         var instance: Monitor? = null // for player am using media3
+        private const val KEEP_ON_AIR_ACTION = "org.avventomedia.app.telefyna.KEEP_ON_AIR"
+        private const val CROSS_FADE_DURATION = 1000L // Reduce fade duration for faster switching to 2seconds
+        private val bumperCache = mutableMapOf<String, List<MediaItem>>() // Cache: folder path -> MediaItem list
+        private val bumperLastModified = mutableMapOf<String, Long>()     // Track last modified time
+        private val animationHandler = Handler(Looper.getMainLooper())
+        // Define a reusable Gson instance outside the function to avoid repeated creation
+        private val gson = GsonBuilder().setPrettyPrinting().create()
     }
 
     private lateinit var sharedPreferences: SharedPreferences
@@ -108,17 +108,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     var alarmManager: AlarmManager? = null
         private set
 
-    // Replace Handler declarations
-    private var maintenanceJob: Job? = null
-    private var handlerJob: Job? = null
-    private var keepOnAirJob: Job? = null
+    private var handler: Handler? = null
 
-    private var maintenance: Maintenance? = null
+    var maintenanceHandler: Handler? = null
+        private set
+
+    var maintenance: Maintenance? = null
 
     private var nowPlayingIndex: Int? = null
     private var failedBecauseOfInternetIndex: Int? = null
-
-    private var previousPlayer: ExoPlayer? = null
 
     private var player: ExoPlayer? = null
     private var currentPlaylist: Playlist? = null
@@ -133,6 +131,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var fillingForLackOfInternet = false
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
+    private val keepOnAirReceiver = KeepOnAirReceiver()
 
     var dateFormat: SimpleDateFormat? = null
         private set
@@ -147,7 +146,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     // This is the second default playlist, it plays whenever there is no internet connection
-    private fun getSecondDefaultIndex(): Int {
+    fun getSecondDefaultIndex(): Int {
         return 1
     }
 
@@ -269,7 +268,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return String.format(PLAYLIST_PLAY_FORMAT, PLAYLIST_LAST_PLAYED, index)
     }
 
-    @SuppressLint("MissingInflatedId")
+    @SuppressLint("MissingInflatedId", "UnspecifiedRegisterReceiverFlag")
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -292,6 +291,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         instance = this
         dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         maintenance = Maintenance()
+        maintenanceHandler = Handler()
+        handler = Handler()
         sharedPreferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
 
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
@@ -300,10 +301,16 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // allow network etc actions since telefyna depends on all of these
         StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().permitAll().build())
 
+        // Register receiver with RECEIVER_NOT_EXPORTED flag for Android 14+
+        val filter = IntentFilter(KEEP_ON_AIR_ACTION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // API 33+
+            registerReceiver(keepOnAirReceiver, filter, RECEIVER_VISIBLE_TO_INSTANT_APPS)
+        } else {
+            registerReceiver(keepOnAirReceiver, filter)
+        }
+
         // Initialize permissions
         initialiseWithPermissions()
-        // Initialize Maintenance
-        maintenance = Maintenance()
         maintenance!!.run()
     }
 
@@ -424,6 +431,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun cacheNowPlaying(noProgramTransition: Boolean) {
+        val playerView = getPlayerView(false)
         val now = nowPlayingIndex?.let { getPlaylistIndex(it) }
         if (now != null && player != null) {
             trackingNowPlaying(now, player!!.currentPosition, noProgramTransition)
@@ -451,13 +459,27 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun addBumpers(bumpers: MutableList<MediaItem>, bumperFolder: File, addedFirstItem: Boolean) {
-        if (bumperFolder.exists() && bumperFolder.listFiles()?.isNotEmpty() == true) {
-            currentPlaylist?.let {
-                Utils.setupLocalPrograms(bumpers, bumperFolder, addedFirstItem,
-                    it
-                )
+        val folderPath = bumperFolder.absolutePath
+        val currentLastModified = if (bumperFolder.exists()) bumperFolder.lastModified() else 0L
+
+        // Check if cache is valid (exists and not outdated)
+        val cachedItems = bumperCache[folderPath]
+        val cachedModified = bumperLastModified[folderPath] ?: 0L
+
+        if (cachedItems == null || currentLastModified > cachedModified) {
+            // Cache miss or folder modified: rebuild and cache
+            if (bumperFolder.exists() && bumperFolder.listFiles()?.isNotEmpty() == true) {
+                currentPlaylist?.let {
+                    Utils.setupLocalPrograms(bumpers, bumperFolder, addedFirstItem, it)
+                }
+                bumpers.reverse()
+                // Update cache
+                bumperCache[folderPath] = bumpers.toList() // Store a copy
+                bumperLastModified[folderPath] = currentLastModified
             }
-            bumpers.reverse()
+        } else {
+            // Cache hit: use cached items
+            bumpers.addAll(cachedItems)
         }
     }
 
@@ -482,213 +504,173 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     @RequiresApi(Build.VERSION_CODES.O)
     @Synchronized
     fun switchNow(index: Int, isCurrentSlot: Boolean, context: Context) {
-        lifecycleScope.launch {
-            val playlist = playlistByIndex[index]
-            Logger.log(AuditLog.Event.PLAYLIST, getPlayingAtIndexLabel(index), GsonBuilder().setPrettyPrinting().create().toJson(playlist))
+        val playlist = playlistByIndex[index]
+        // Use the static Gson instance to reduce object creation
+        Logger.log(AuditLog.Event.PLAYLIST, getPlayingAtIndexLabel(index), gson.toJson(playlist))
 
-            // Re-maintain if init file exists; drop it and reload schedule
-            val reInitializerFile = getReInitializerFile()
-            if (reInitializerFile.exists()) {
-                reInitializerFile.delete()
-                maintenance?.run()
-                return@launch
-            }
+        // Re-maintain if init file exists; drop it and reload schedule
+        val reInitializerFile = getReInitializerFile()
+        if (reInitializerFile.exists()) {
+            reInitializerFile.delete()
+            maintenance?.run()
+            return
+        }
 
-            if (!samePlaylistPlaying(index) || playTheSame(index)) { // Leave current program to proceed if it's the same being loaded
-                // Setup objects; skip playlist with nothing to play
-                nowPlayingIndex = index
-                currentPlaylist = playlist
-                programItems = maintenance?.retrievePrograms(currentPlaylist) as MutableList<MediaItem>
+        if (!samePlaylistPlaying(index) || playTheSame(index)) { // Leave current program to proceed if it's the same being loaded
+            // Setup objects; skip playlist with nothing to play
+            nowPlayingIndex = index
+            currentPlaylist = playlist
+            programItems = maintenance?.retrievePrograms(currentPlaylist) as MutableList<MediaItem>
 
-                // Cancel any existing handler jobs
-                //handlerJob?.cancel()
+            val firstDefaultIndex = getFirstDefaultIndex()
+            val secondDefaultIndex = getSecondDefaultIndex()
 
-                val firstDefaultIndex = getFirstDefaultIndex()
-                val secondDefaultIndex = getSecondDefaultIndex()
-
-                if (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
-                    //handlerJob?.cancel()  // Cancel previous job if exists
-                    handlerJob = lifecycleScope.launch {
-                        configuration?.wait?.times(1000L)?.let { waitTime ->
-                            delay(waitTime)
-                            if (Utils.internetConnected()) {
+            if (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
+                (configuration?.wait)?.times(1000L)?.let {
+                    instance?.handler?.removeCallbacksAndMessages(null) // Cleanup before scheduling delay
+                    instance?.handler?.postDelayed({
+                        if (Utils.internetConnected()) {
+                            try {
                                 switchNow(nowPlayingIndex!!, isCurrentSlot, context)
-                            } else {
-                                fillingForLackOfInternet = true
-                                failedBecauseOfInternetIndex = nowPlayingIndex
+                            } catch (e: Exception) {
+                                e.message?.let { it1 -> Logger.log(AuditLog.Event.PLAYLIST_ERROR, it1) }
                                 switchNow(secondDefaultIndex, isCurrentSlot, context)
                             }
-                        }
-                    }
-                } else {
-                    keepBroadcasting()
-                    if (secondDefaultIndex == nowPlayingIndex && (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() || currentPlaylist!!.type != Playlist.Type.ONLINE && programItems.isEmpty())
-                    ) {
-                        Logger.log(AuditLog.Event.EMPTY_FILLERS)
-                        switchNow(firstDefaultIndex, isCurrentSlot, context)
-                        return@launch
-                    } else {
-                        if (programItems.isEmpty()) {
-                            Logger.log(AuditLog.Event.PLAYLIST_EMPTY_PLAY, getPlayingAtIndexLabel(nowPlayingIndex))
-                            switchNow(currentPlaylist!!.emptyReplacer ?: firstDefaultIndex, isCurrentSlot, context)
-                            return@launch
                         } else {
-                            previousPlayer = player
-                            if (player == null) {
-                                player = buildPlayer(context) // Create a new player
-                            }
-                            // Reset tracking now playing if the playlist programs were modified
-                            val modifiedOffset = playlistModified(nowPlayingIndex!!)
-
-                            if (modifiedOffset > 0) {
-                                Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
-                                resetTrackingNowPlaying(nowPlayingIndex!!)
-                            }
-
-                            nowProgramItem = currentPlaylist!!.seekTo.program
-                            startOnePlayProgramItem = null
-                            var nowPosition = currentPlaylist!!.seekTo.position
-
-                            if (currentPlaylist!!.type != Playlist.Type.ONLINE) {
-                                // Resume local resumable programs
-                                if (currentPlaylist!!.isResuming()) {
-                                    val previousProgram = getSharedPlaylistMediaItem(
-                                        getPlaylistIndex(nowPlayingIndex!!)
-                                    )
-                                    var previousSeekTo = getSharedPlaylistSeekTo(
-                                        getPlaylistIndex(nowPlayingIndex!!)
-                                    )
-
-                                    if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
-                                        // previousProgram == -1 when it was reset
-                                        nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(
-                                                1
-                                            )
-                                        ) {
-                                            0
-                                        } else if (currentPlaylist!!.repeat?.let {
-                                                canResume(
-                                                    nowPlayingIndex!!,
-                                                    it
-                                                )
-                                            } == true) {
-                                            previousProgram.plus(1) // Next program excluding bumpers
-                                        } else {
-                                            previousProgram
-                                        }
-                                        previousSeekTo = 0
-                                    } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_SAME) {
-                                        nowProgramItem = previousProgram
-                                        previousSeekTo = 0
-                                    }
-
-                                    currentPlaylist!!.name?.let {
-                                        nowProgramItem?.let { it1 ->
-                                            programItems[it1]
-                                        }?.let { it2 -> getMediaItemName(it2) }?.let { it3 ->
-                                            Logger.log(AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME,
-                                                it, it3, previousSeekTo)
-                                        }
-                                    }
-                                    if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE) {
-                                        val item = nowProgramItem?.let { programItems[it] }
-                                        programItems.clear()
-                                        if (item != null) {
-                                            programItems.add(item)
-                                        }
-                                        startOnePlayProgramItem = nowProgramItem
-                                        nowProgramItem = 0
-                                    } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
-                                        nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
-                                    }
-                                } else {
-                                    val bumperFolder = getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)
-                                    val generalBumpersIntro = mutableListOf<MediaItem>()
-                                    val generalBumpersOutro = mutableListOf<MediaItem>()
-                                    val specialBumpersIntro = mutableListOf<MediaItem>()
-                                    val specialBumpersOutro = mutableListOf<MediaItem>()
-                                    val playListIntroBumpers = mutableListOf<MediaItem>()
-                                    val playListOutroBumpers = mutableListOf<MediaItem>()
-
-                                    // Prepare intro general bumpers
-                                    if (currentPlaylist!!.isPlayingGeneralBumpers) {
-                                        addBumpers(generalBumpersIntro, File("$bumperFolder${File.separator}General-INTRO"), false)
-                                        addBumpers(generalBumpersOutro, File("$bumperFolder${File.separator}General-OUTRO"), false)
-                                    }
-
-                                    // Prepare intro special bumpers
-                                    val specialBumperFolder = currentPlaylist!!.specialBumperFolder
-                                    if (!specialBumperFolder.isNullOrBlank()) {
-                                        addBumpers(specialBumpersIntro, File("$bumperFolder${File.separator}$specialBumperFolder-INTRO"), false)
-                                        addBumpers(specialBumpersOutro, File("$bumperFolder${File.separator}$specialBumperFolder-OUTRO"), false)
-                                    }
-
-                                    // Prepare playlist specific bumpers
-                                    addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
-                                        ?.get(0)}-INTRO"), false)
-                                    addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
-                                        ?.get(0)}-OUTRO"), false)
-
-                                    // Add intro bumpers
-                                    val currentBumpers = mutableListOf<MediaItem>().apply {
-                                        addAll(generalBumpersIntro)
-                                        addAll(playListIntroBumpers)
-                                        addAll(specialBumpersIntro)
-                                    }
-                                    programItems.addAll(0, currentBumpers)
-
-                                    // Add outro bumpers
-                                    programItems.addAll(specialBumpersOutro)
-                                    programItems.addAll(playListOutroBumpers)
-                                    programItems.addAll(generalBumpersOutro)
-                                }
-
-                                if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
-                                    val seek = seekImmediateNonCompletedSlot(currentPlaylist!!, programItems)
-                                    if (seek != null) {
-                                        nowProgramItem = if (seek.program == (programItems.size).minus(1)) seek.program else nowProgramItem?.plus(seek.program)
-                                        nowPosition = if (seek.program == (programItems.size).minus(1)) seek.position else nowProgramItem?.plus(seek.position)!!
-                                    } else { // Slot is ended, switch to fillers
-                                        Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getPlayingAtIndexLabel(nowPlayingIndex))
-                                        switchNow(secondDefaultIndex, false, context)
-                                        return@launch
-                                    }
-                                }
-                            }
-
-                            val current = getPlayerView(true).player
-                            instance?.let { current?.removeListener(it) }
-                            // Load the new media items
-                            programItems.let { player!!.setMediaItems(it) }
-                            nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
-                            player!!.prepare()
-                            if (!currentPlaylist!!.isResuming()) {
-                                player!!.volume = 0f
-                                val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                                    duration = CROSS_FADE_DURATION
-                                    addUpdateListener {
-                                        player!!.volume = it.animatedValue as Float
-                                    }
-                                }
-                                fadeInAnimator.start()
-                            }
-                            Logger.log(AuditLog.Event.FADE_STOPPED, "fade in transition played")
-
-                            instance?.let { player!!.addListener(it) }
-                            player!!.playWhenReady = true
-                            nowProgramItem?.let { programItems[it] }
-                                ?.let { getMediaItemName(it) }?.let {
-                                    Logger.log(
-                                        if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
-                                        getNowPlayingPlaylistLabel(),
-                                        Utils.formatDuration(nowPosition),
-                                        it
-                                    )
-                                }
-                            // Log now playing
-                            cacheNowPlaying(false)
-                            triggerGraphics(nowPosition)
+                            fillingForLackOfInternet = true
+                            failedBecauseOfInternetIndex = nowPlayingIndex
+                            switchNow(secondDefaultIndex, isCurrentSlot, context)
                         }
+                    }, it)
+                }
+            } else {
+                keepBroadcasting()
+                if (secondDefaultIndex == nowPlayingIndex && (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() || currentPlaylist!!.type != Playlist.Type.ONLINE && programItems.isEmpty())) {
+                    Logger.log(AuditLog.Event.EMPTY_FILLERS)
+                    switchNow(firstDefaultIndex, isCurrentSlot, context)
+                    return
+                } else {
+                    if (programItems.isEmpty()) {
+                        Logger.log(AuditLog.Event.PLAYLIST_EMPTY_PLAY, getPlayingAtIndexLabel(nowPlayingIndex))
+                        switchNow(currentPlaylist!!.emptyReplacer ?: firstDefaultIndex, isCurrentSlot, context)
+                        return
+                    } else {
+                        // Optimize player management: reuse player if possible, only create if null
+                        // Removed previousPlayer logic and isReleased check, as we’re reusing player correctly
+                        if (player == null) {
+                            player = buildPlayer(context)
+                        } else {
+                            player?.stop() // Stop playback before clearing
+                            player?.clearMediaItems() // Clear existing items for reuse
+                        }
+                        // Reset tracking now playing if the playlist programs were modified
+                        val modifiedOffset = playlistModified(nowPlayingIndex!!)
+                        if (modifiedOffset > 0) {
+                            Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
+                            resetTrackingNowPlaying(nowPlayingIndex!!)
+                        }
+
+                        nowProgramItem = currentPlaylist!!.seekTo.program
+                        startOnePlayProgramItem = null
+                        var nowPosition = currentPlaylist!!.seekTo.position
+
+                        if (currentPlaylist!!.type != Playlist.Type.ONLINE) {
+                            // Resume local resumable programs
+                            if (currentPlaylist!!.isResuming()) {
+                                val previousProgram = getSharedPlaylistMediaItem(getPlaylistIndex(nowPlayingIndex!!))
+                                var previousSeekTo = getSharedPlaylistSeekTo(getPlaylistIndex(nowPlayingIndex!!))
+                                if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
+                                    nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
+                                        0
+                                    } else if (currentPlaylist!!.repeat?.let { canResume(nowPlayingIndex!!, it) } == true) {
+                                        previousProgram.plus(1)
+                                    } else {
+                                        previousProgram
+                                    }
+                                    previousSeekTo = 0
+                                } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_SAME) {
+                                    nowProgramItem = previousProgram
+                                    previousSeekTo = 0
+                                }
+
+                                currentPlaylist!!.name?.let {
+                                    nowProgramItem?.let { it1 -> programItems[it1] }?.let { it2 -> getMediaItemName(it2) }?.let { it3 ->
+                                        Logger.log(AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME, it, it3, previousSeekTo)
+                                    }
+                                }
+                                if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE) {
+                                    val item = nowProgramItem?.let { programItems[it] }
+                                    programItems.clear()
+                                    if (item != null) {
+                                        programItems.add(item)
+                                    }
+                                    startOnePlayProgramItem = nowProgramItem
+                                    nowProgramItem = 0
+                                } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
+                                    nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
+                                }
+                            } else {
+                                val bumperFolder = getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)
+                                // Add bumpers directly to programItems to avoid intermediate lists
+                                if (currentPlaylist!!.isPlayingGeneralBumpers) {
+                                    addBumpers(programItems, File("$bumperFolder${File.separator}General-INTRO"), false)
+                                    addBumpers(programItems, File("$bumperFolder${File.separator}General-OUTRO"), false)
+                                }
+                                val specialBumperFolder = currentPlaylist!!.specialBumperFolder
+                                if (!specialBumperFolder.isNullOrBlank()) {
+                                    addBumpers(programItems, File("$bumperFolder${File.separator}$specialBumperFolder-INTRO"), false)
+                                    addBumpers(programItems,  File("$bumperFolder${File.separator}$specialBumperFolder-OUTRO"), false)
+                                }
+                                val playlistBumperPath = currentPlaylist!!.urlOrFolder?.split("#")?.get(0)
+                                addBumpers(programItems, File("$bumperFolder${File.separator}$playlistBumperPath-INTRO"), false)
+                                addBumpers(programItems, File("$bumperFolder${File.separator}$playlistBumperPath-OUTRO"), false)
+                                // Note: Assumes addBumpers can take a position parameter; if not, revert to minimal intermediate lists
+                            }
+
+                            if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
+                                val seek = seekImmediateNonCompletedSlot(currentPlaylist!!, programItems)
+                                if (seek != null) {
+                                    nowProgramItem = if (seek.program == (programItems.size).minus(1)) seek.program else nowProgramItem?.plus(seek.program)
+                                    nowPosition = if (seek.program == (programItems.size).minus(1)) seek.position else nowProgramItem?.plus(seek.position)!!
+                                } else { // Slot is ended, switch to fillers
+                                    Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getPlayingAtIndexLabel(nowPlayingIndex))
+                                    switchNow(secondDefaultIndex, false, context)
+                                    return
+                                }
+                            }
+                        }
+
+                        val playerView = getPlayerView(true)
+                        playerView.player?.removeListener(this) // Remove old listener
+                        // Load the new media items
+                        programItems.let { player!!.setMediaItems(it) }
+                        nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
+                        player!!.prepare()
+                        // Fade-in for new player (if desired, otherwise skip)
+                        if (!currentPlaylist!!.isResuming()) {
+                            player!!.volume = 0f
+                            val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                                duration = CROSS_FADE_DURATION
+                                addUpdateListener { player!!.volume = it.animatedValue as Float }
+                            }
+                            fadeInAnimator.start()
+                            Logger.log(AuditLog.Event.FADE_PLAYED, "fade in transition played")
+                        }
+                        instance?.let { player!!.addListener(it) }
+                        player!!.playWhenReady = true
+                        playerView.player = player // Explicitly attach new player to PlayerView
+                        player!!.addListener(this) // Add listener once
+                        nowProgramItem?.let { programItems[it] }?.let { getMediaItemName(it) }?.let {
+                            Logger.log(
+                                if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
+                                getNowPlayingPlaylistLabel(),
+                                Utils.formatDuration(nowPosition),
+                                it
+                            )
+                        }
+                        // Log now playing
+                        cacheNowPlaying(false)
+                        triggerGraphics(nowPosition)
                     }
                 }
             }
@@ -705,9 +687,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 playerView.player = player
                 break
             }
-        }
-        if (previousPlayer != null && previousPlayer != current) { // Switching too fast, consider on in view
-            endPlayer(previousPlayer)
         }
     }
 
@@ -859,20 +838,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     override fun onDestroy() {
-        try {
-            super.onDestroy()
-            shutDownHook()
+        super.onDestroy()
+        shutDownHook()
+        player?.release()
+        maintenanceHandler?.removeCallbacksAndMessages(null)
+        handler?.removeCallbacksAndMessages(null)
+        // Unregister receiver and cancel alarm
+        unregisterReceiver(keepOnAirReceiver)
+        val intent = Intent(KEEP_ON_AIR_ACTION)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager?.cancel(pendingIntent)
 
-            // Cancel all coroutines
-            handlerJob?.cancel()
-            keepOnAirJob?.cancel()
-            maintenanceJob?.cancel()
-
-            player?.release()
-            maintenance?.cancelPendingIntents()
-        } catch (e: DeadObjectException) {
-            Logger.log(AuditLog.Event.ERROR, e.message ?: "DeadObjectException caught")
-        }
     }
 
     private fun getLastModifiedFor(index: Int): Long {
@@ -992,59 +971,55 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     @RequiresApi(Build.VERSION_CODES.M)
     private fun triggerGraphics(nowPosition: Long) {
-        lifecycleScope.launch {
-            hideLogo()
-            // Always check initialization before hiding
-            if (::tickerRecyclerView.isInitialized) {
-                hideTicker()
+        hideLogo()
+        // Always check initialization before hiding
+        if (::tickerRecyclerView.isInitialized) {
+            hideTicker()
+        }
+        hideWatermark(); //hide watermark after program completed
+        hideLowerThird()
+        val graphics = currentPlaylist?.graphics
+        graphics?.let {
+            // handle live logo display
+            if(it.displayLiveLogo) {
+                showLiveLogo(graphics.logoPosition);
             }
-            hideWatermark(); //hide watermark after program completed
-            hideLowerThird()
-            val graphics = currentPlaylist?.graphics
-            graphics?.let {
-                // handle live logo display
-                if (it.displayLiveLogo) {
-                    showLiveLogo(graphics.logoPosition);
-                }
-                // handle repeat Watermark display
-                if (it.displayRepeatWatermark) {
-                    nowProgramItem?.let { it1 -> programItems[it1] }
-                        ?.let { it2 -> triggerRepeatWatermark(it2) };
-                }
+            // handle repeat Watermark display
+            if(it.displayRepeatWatermark) {
+                nowProgramItem?.let { it1 -> programItems[it1] }
+                    ?.let { it2 -> triggerRepeatWatermark(it2) };
+            }
 
-                // Handle logo
-                if (it.displayLogo) {
-                    showLogo(it.logoPosition)
-                }
+            // Handle logo
+            if (it.displayLogo) {
+                showLogo(it.logoPosition)
+            }
 
-                // Handle lowerThird
-                val lowerThirds = it.lowerThirds
-                lowerThirds?.forEach { ltd ->
-                    if (StringUtils.isNotBlank(ltd.starts) && ltd.file != null) {
-                        ltd.getStartsArray().forEach { s ->
-                            val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
-                            launch {
-                                delay(start - nowPosition)
-                                showLowerThird(ltd)
-                            }
-                        }
+            // Handle lowerThird
+            val lowerThirds = it.lowerThirds
+            lowerThirds?.forEach { ltd ->
+                if (StringUtils.isNotBlank(ltd.starts) && ltd.file != null) {
+                    ltd.getStartsArray().forEach { s ->
+                        val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
+                        instance?.handler?.postDelayed({
+                            showLowerThird(ltd)
+                        }, start - nowPosition)
                     }
                 }
+            }
 
-                // Handle ticker
-                val news = it.news
-                news?.let { newsData ->
-                    val messages = newsData.getMessagesArray()
-                    if (messages.isNotEmpty()) {
-                        initTickers(newsData)
-                        newsData.getStartsArray().forEach { s ->
-                            val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
-                            if (start >= nowPosition) {
-                                launch {
-                                    delay(start - nowPosition)
-                                    showTicker(newsData)
-                                }
-                            }
+            // Handle ticker
+            val news = it.news
+            news?.let { newsData ->
+                val messages = newsData.getMessagesArray()
+                if (messages.isNotEmpty()) {
+                    initTickers(newsData)
+                    newsData.getStartsArray().forEach { s ->
+                        val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
+                        if (start >= nowPosition) {
+                            instance?.handler?.postDelayed({
+                                showTicker(newsData)
+                            }, start - nowPosition)
                         }
                     }
                 }
@@ -1197,12 +1172,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
          fadeInRecyclerView(tickerRecyclerView)
     }
 
-    private fun fadeInRecyclerView(recyclerView : RecyclerView) {
-        recyclerView.visibility = View.VISIBLE
-        val fadeIn = ObjectAnimator.ofFloat(recyclerView, "alpha", 0f, 1f)
-        fadeIn.duration = 1000 // Set duration for the fade-in effect
-        fadeIn.interpolator = DecelerateInterpolator()
-        fadeIn.start()
+    private fun fadeInRecyclerView(recyclerView: RecyclerView) {
+        animationHandler.removeCallbacksAndMessages(null)
+        animationHandler.post {
+            recyclerView.visibility = View.VISIBLE
+            recyclerView.animate().alpha(1f).setDuration(1000).start()
+        }
     }
 
     private fun showLogo(logoPosition: Graphics.LogoPosition?) {
@@ -1242,70 +1217,66 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return config
     }
 
-    // Optimized keepBroadcasting with coroutines
     @RequiresApi(Build.VERSION_CODES.O)
     private fun keepBroadcasting() {
         nowPlayingIndex?.let {
-            keepOnAirJob?.cancel()  // Cancel previous job
-            keepOnAirJob = lifecycleScope.launch(Dispatchers.IO) {
-                while (isActive) {
-                    keepOnAir()
-                    configuration?.wait?.times(1000L)?.let { delay(it) }
-                }
-            }
+            scheduleKeepOnAir()
         }
     }
 
-    // Optimized keepOnAir with coroutines
     @RequiresApi(Build.VERSION_CODES.O)
-    private suspend fun keepOnAir() {
-        withContext(Dispatchers.IO) {
-            when {
-                getRebootFile().exists() -> {
-                    getRebootFile().delete()
-                    rebootDevice()
-                    return@withContext
-                }
+    private fun scheduleKeepOnAir() {
+        val delay = (configuration?.wait ?: 30) * 1000L // Default to 30 seconds if null
+        val intent = Intent("org.avventomedia.app.telefyna.KEEP_ON_AIR")
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager?.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            System.currentTimeMillis() + delay,
+            pendingIntent
+        )
+    }
 
-                getRestartFile().exists() -> {
-                    getRestartFile().delete()
-                    restartApp()
-                    return@withContext
-                }
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun keepOnAir() {
+        val delay = (configuration?.wait)?.times(1000L)
+        when {
+            getRebootFile().exists() -> {
+                getRebootFile().delete()
+                rebootDevice()
+            }
+            getRestartFile().exists() -> {
+                getRestartFile().delete()
+                restartApp()
+            }
+            else -> {
+                if (getBackupConfigFile().exists()) backupConfig(false)
+                if (getBackupConfigResetFile().exists()) backupConfig(true)
 
-                else -> {
-                    if (getBackupConfigFile().exists()) backupConfig(false)
-                    if (getBackupConfigResetFile().exists()) backupConfig(true)
-
-                    if (nowPlayingIndex == getSecondDefaultIndex() && fillingForLackOfInternet && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
-                        fillingForLackOfInternet = false
-                        Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                        switchNow(failedBecauseOfInternetIndex!!, false, this@Monitor)
-                        failedBecauseOfInternetIndex = null
-                        return@withContext // Exit the coroutine block
-                    } else {
-                        // Handle delay and off-air state
-                        val delay = configuration?.wait?.times(1000L)
+                if (nowPlayingIndex == getSecondDefaultIndex() && fillingForLackOfInternet && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
+                    fillingForLackOfInternet = false
+                    Logger.log(AuditLog.Event.INTERNET_RESTORED)
+                    switchNow(failedBecauseOfInternetIndex!!, false, this)
+                    failedBecauseOfInternetIndex = null
+                } else {
+                    if (delay != null) {
+                        handler?.postDelayed({ keepOnAir() }, delay)
+                    }
+                    if (offAir) {
+                        offAir = false
                         if (delay != null) {
-                            delay(delay)  // Use coroutine delay instead of Handler.postDelayed
+                            Logger.log(AuditLog.Event.STUCK, delay / 1000)
                         }
-                        withContext(Dispatchers.Main) {
-                            if (offAir) {
-                                offAir = false
-                                if (delay != null) {
-                                    Logger.log(AuditLog.Event.STUCK, delay / 1000)
-                                }
-                                switchNow(nowPlayingIndex!!, false, this@Monitor)
-                            } else {
-                                offAir = player == null || !player!!.isPlaying
-                            }
-                        }
+                        switchNow(nowPlayingIndex!!, false, this)
+                    } else {
+                        offAir = player == null || !player!!.isPlaying
                     }
                 }
             }
         }
     }
-
 
     private fun rebootDevice() {
         try {
@@ -1316,26 +1287,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun restartApp() {
-        lifecycleScope.launch {
-            maintenance?.cancelPendingIntents()
-            val intent = Intent(instance, Monitor::class.java)
-            val mPendingIntent = PendingIntent.getActivity(
-                instance, 700000001, intent,
-                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            withContext(Dispatchers.IO) {
-                alarmManager?.set(
-                    AlarmManager.RTC,
-                    System.currentTimeMillis() + 100,
-                    mPendingIntent
-                )
-            }
-
-            Logger.log(AuditLog.Event.RESTARTING)
-            instance?.finish()
-            exitProcess(2)
-        }
+        maintenance?.cancelPendingIntents()
+        val intent = Intent(instance, instance!!::class.java)
+        val mPendingIntent = PendingIntent.getActivity(
+            instance, 700000001, intent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        alarmManager?.set(AlarmManager.RTC, System.currentTimeMillis() + 100, mPendingIntent)
+        Logger.log(AuditLog.Event.RESTARTING)
+        instance?.finish()
+        exitProcess(2)
     }
 
     private fun backupConfig(resetSeekTo: Boolean) {
@@ -1353,6 +1313,44 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             }
         } catch (e: IOException) {
             e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }
+        }
+    }
+
+    inner class KeepOnAirReceiver : BroadcastReceiver() {
+        @RequiresApi(Build.VERSION_CODES.O)
+        override fun onReceive(context: Context, intent: Intent) {
+            when {
+                getRebootFile().exists() -> {
+                    getRebootFile().delete()
+                    rebootDevice()
+                }
+                getRestartFile().exists() -> {
+                    getRestartFile().delete()
+                    restartApp()
+                }
+                else -> {
+                    if (getBackupConfigFile().exists()) backupConfig(false)
+                    if (getBackupConfigResetFile().exists()) backupConfig(true)
+
+                    if (nowPlayingIndex == getSecondDefaultIndex() &&
+                        fillingForLackOfInternet &&
+                        Utils.internetConnected() &&
+                        failedBecauseOfInternetIndex != null) {
+                        fillingForLackOfInternet = false
+                        Logger.log(AuditLog.Event.INTERNET_RESTORED)
+                        switchNow(failedBecauseOfInternetIndex!!, false, this@Monitor)
+                        failedBecauseOfInternetIndex = null
+                    } else {
+                        offAir = player == null || !player!!.isPlaying
+                        if (offAir) {
+                            offAir = false
+                            Logger.log(AuditLog.Event.STUCK, (configuration?.wait ?: 0).toLong())
+                            switchNow(nowPlayingIndex!!, false, this@Monitor)
+                        }
+                        scheduleKeepOnAir() // Schedule the next execution
+                    }
+                }
+            }
         }
     }
 }
