@@ -13,7 +13,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.net.Uri
 import android.provider.Settings
@@ -46,6 +45,8 @@ import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import org.apache.commons.lang3.StringUtils
@@ -98,6 +99,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private val animationHandler = Handler(Looper.getMainLooper())
         // Define a reusable Gson instance outside the function to avoid repeated creation
         private val gson = GsonBuilder().setPrettyPrinting().create()
+        private val possibleExtensions = listOf("webp", "png", "jpg", "gif")
     }
 
     private lateinit var sharedPreferences: SharedPreferences
@@ -1136,12 +1138,24 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     private fun showRepeatProgramWatermark() {
         val watermarkFolder = currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
-        val watermarkFile = File("$watermarkFolder${File.separator}repeat.png")
+        // Check for different possible file extensions
+        val watermarkFile = possibleExtensions
+            .map { File("$watermarkFolder${File.separator}repeat.$it") }
+            .firstOrNull { it.exists() } // Get the first valid file
 
-        if (watermarkFile.exists()) {
-            val bitmap = BitmapFactory.decodeFile(watermarkFile.absolutePath)
+        if (watermarkFile?.exists() == true) {
             val watermarkView: ImageView = findViewById(R.id.watermark)
-            watermarkView.setImageBitmap(bitmap)
+
+            // Clear previous image to prevent memory leaks
+            Glide.with(watermarkView.context).clear(watermarkView)
+
+            // Use Glide to load and display the image
+            Glide.with(watermarkView.context)
+                .asDrawable() // allows gifs and static images
+                .load(watermarkFile)
+                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
+                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
+                .into(watermarkView)
             watermarkView.visibility = View.VISIBLE
             Logger.log(AuditLog.Event.DISPLAY_REPEAT_PROGRAM_WATERMARK_ON)
         }
@@ -1149,10 +1163,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     private fun showLiveLogo(logoPosition: Graphics.LogoPosition?) {
         val watermarkFolder = currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
-        val logoFile = File("$watermarkFolder${File.separator}live.png")
+        // Check for different possible file extensions
+        val logoFile = possibleExtensions
+            .map { File("$watermarkFolder${File.separator}live.$it") }
+            .firstOrNull { it.exists() } // Get the first valid file
 
-        if (logoFile.exists() && logoPosition != null) {
-            val bitmap = BitmapFactory.decodeFile(logoFile.absolutePath)
+        if (logoFile?.exists() == true && logoPosition != null) {
             val logoView: ImageView = if (Graphics.LogoPosition.TOP == logoPosition) {
                 findViewById<ImageView>(R.id.topLogo).apply {
                     Logger.log(AuditLog.Event.DISPLAY_LIVE_LOGO_ON, Graphics.LogoPosition.TOP.name)
@@ -1162,7 +1178,18 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     Logger.log(AuditLog.Event.DISPLAY_LIVE_LOGO_ON, Graphics.LogoPosition.BOTTOM.name)
                 }
             }
-            logoView.setImageBitmap(bitmap)
+
+            // Clear previous image to prevent memory leaks
+            Glide.with(logoView.context).clear(logoView)
+
+            // Use Glide to load and display the image
+            Glide.with(logoView.context)
+                .asDrawable() // allows gifs and static images
+                .load(logoFile)
+                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
+                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
+                .into(logoView)
+
             logoView.visibility = View.VISIBLE
         }
     }
@@ -1187,9 +1214,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun showLogo(logoPosition: Graphics.LogoPosition?) {
-        val logo = File(getProgramsFolderPath(false) + File.separator + "logo.png")
-        if (logo.exists() && logoPosition != null) {
-            val myBitmap = BitmapFactory.decodeFile(logo.absolutePath)
+        val logoFolder = getProgramsFolderPath(false)
+        val logoFile = possibleExtensions
+            .map { File("${logoFolder}${File.separator}logo.$it") }
+            .firstOrNull { it.exists() } // Get the first valid file
+        if (logoFile?.exists() == true && logoPosition != null) {
             val logoView: ImageView = when (logoPosition) {
                 Graphics.LogoPosition.TOP -> {
                     Logger.log(AuditLog.Event.DISPLAY_LOGO_ON, Graphics.LogoPosition.TOP.name)
@@ -1200,7 +1229,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     findViewById(R.id.bottomLogo)
                 }
             }
-            logoView.setImageBitmap(myBitmap)
+
+            // Clear previous image to prevent memory leaks
+            Glide.with(logoView.context).clear(logoView)
+
+            // Use Glide to load and display the image
+            Glide.with(logoView.context)
+                .asDrawable() // allows gifs and static images
+                .load(logoFile)
+                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
+                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
+                .into(logoView)
             logoView.visibility = View.VISIBLE
         }
     }
