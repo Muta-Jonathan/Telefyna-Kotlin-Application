@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 @UnstableApi
 class TelefynaRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
 
+    private val MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY_PLAYER = 10
     override fun buildVideoRenderers(
         context: Context,
         extensionRendererMode: Int,
@@ -29,7 +30,7 @@ class TelefynaRenderersFactory(context: Context) : DefaultRenderersFactory(conte
                 enableDecoderFallback,
                 eventHandler,
                 eventListener,
-                MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY
+                MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY_PLAYER
             )
         )
     }

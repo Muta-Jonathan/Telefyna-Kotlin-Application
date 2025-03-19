@@ -756,6 +756,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     if (currentPlaylist?.type == Playlist.Type.ONLINE) {
                         player?.seekTo(player!!.contentDuration) // hack
                     }
+                    player?.playWhenReady = true // Ensure playback resumes smoothly
                 }
             }
         }

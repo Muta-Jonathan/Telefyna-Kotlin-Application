@@ -15,7 +15,7 @@ ___
 * Download the [Coming Soon]() and install it, grant the app Storage permission and reload it if necessary
 
 ## Configurations
-* User the [online configuration application](https://avventomedia.org/telefyna/configuration.html) to build and export your `config.json`
+* User the [online configuration application](https://avventomedia.org/telefynaConfiguration/) to build and export your `config.json`
 * Visit SDcard/drive or device storage without SDcard/drive and add a local `telefyna` folder playlist folder containing your local programs folder (`playlist`) and `config.json` file
 * Ensure the telefyna app is granted storage permission in your permissions
 * Telefyna logs audits onto `telefynaAudit` on the device storage
@@ -67,7 +67,7 @@ For any questions or queries, please receivers the support team at apps@avventom
 ---
 **Author:** AvventoProductions
 <br>
-**Last Updated:** `2025-01-24`
+**Last Updated:** `2025-03-19`
 ---
 ## To Do
 
@@ -96,7 +96,6 @@ For any questions or queries, please receivers the support team at apps@avventom
 - [ ] **Urgent; INVESTIGATE:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30.
 - [ ] Create user-guide
 - [ ] Support triggering reinitialization in the next program
-- [ ] Support gifs in showing logo and watermarks
 
 ### Links
 
@@ -106,7 +105,6 @@ For any questions or queries, please receivers the support team at apps@avventom
 - [ ] Build reports from audits
 - [ ] Write tests
 - [ ] Play video with different or additional audio/slave
-- [ ] Overlay another layer on the video stream for ads, logos, gifs etc.
 - [ ] Read satellite channels and decoders as local playlists and streams
 - [ ] Add a way to stream video as only audio (streaming audio only)
 - [ ] Support streaming to HLS, Shoutcast, and Loudcast (use external streaming encoder, not supported)
@@ -146,6 +144,7 @@ For any questions or queries, please receivers the support team at apps@avventom
 - [x] Replay fillers if gone
 - [x] Build a schedule GUI builder & viewer for `config.json`
 - [x] Support RTMP format 
+- [x] Overlay another layer on the video stream for ads, logos, gifs etc.
 - [x] Support for Live & Repeat Watermarks (live is to show if turned on from the schedule and when u are on ONLINE playlist and others can show Repeat from the schedule if turned on) [#1](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/pull/1)
 - [x] Fix show Repeat watermark on Restart or Reboot reinitialization (look into onMediaItemTransition method)
 - [x] Added show Repeat watermark on Preview schedule in scheduler 
@@ -173,3 +172,8 @@ For any questions or queries, please receivers the support team at apps@avventom
 
 - [x] Add Custom scroll ticker with time (able to show time and scrolling text) `(2025-01-24)` [#3](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/pull/3)
 - [x] Added fading mechanisms instead of abrupt cuts `(2025-01-24)` [#5](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/pull/5)
+
+### March
+
+---
+- [x] Support gifs in showing logo and watermarks `(2025-03-18)` [#21](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/pull/21)
