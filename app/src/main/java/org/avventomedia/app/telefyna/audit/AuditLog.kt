@@ -30,6 +30,7 @@ class AuditLog {
         PLAYLIST("$SPLITTER[ Preparing to play playlist: %s: %s"),
         PLAYLIST_PLAY("Playing Playlist: %s from: %s %s"),
         PLAYLIST_SWITCH("Switching to Playlist: %s from: %s %s"),
+        PLAYLIST_LAST_ITEM("Now entering last item of playlist: %s"),
         PLAYING_NOW("Now playing"),
         PLAYLIST_EMPTY_PLAY("$SPLITTER Attempted to play an empty playlist: %s"),
         PLAYLIST_MODIFIED("Playlist: %s is resetting resuming since it was modified %s seconds ago"),

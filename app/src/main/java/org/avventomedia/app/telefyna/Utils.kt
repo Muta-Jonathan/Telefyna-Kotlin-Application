@@ -14,6 +14,7 @@ import java.io.InputStreamReader
 import java.net.NetworkInterface
 import java.net.URL
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 object Utils {
 
@@ -58,8 +59,8 @@ object Utils {
             }
 
             if (Playlist.Type.LOCAL_RANDOMIZED == playlist.type) {
-                programs.shuffle()
-                programs.shuffle()
+                // Shuffle the playlist using a fresh random seed to ensure better randomness and reduce repeat patterns
+                programs.shuffle(Random(System.nanoTime()))
             }
         }
     }
