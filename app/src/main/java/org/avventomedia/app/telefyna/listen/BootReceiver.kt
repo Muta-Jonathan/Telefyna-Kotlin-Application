@@ -10,7 +10,11 @@ class BootReceiver : BroadcastReceiver() {
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            Maintenance().scheduleNextMaintenance()
+            // Start playback service to resume 24/7 playback
+            val startIntent = Intent(context, org.avventomedia.app.telefyna.service.PlayerService::class.java).apply {
+                action = org.avventomedia.app.telefyna.service.PlayerService.ACTION_START
+            }
+            context.startForegroundService(startIntent)
         }
     }
 }

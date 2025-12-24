@@ -44,6 +44,11 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
+import android.content.ComponentName
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
@@ -51,7 +56,6 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.apache.commons.lang3.StringUtils
@@ -117,6 +121,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     var maintenanceHandler: Handler? = null
         private set
+
+    // Media3 controller that binds UI to PlayerService session
+    private var controllerFuture: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
+    private var mediaController: MediaController? = null
 
     var maintenance: Maintenance? = null
 
@@ -279,6 +287,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.monitor)
+        // Ensure the PlayerService is running to own playback lifecycle
+        org.avventomedia.app.telefyna.service.PlayerService.start(applicationContext)
 
         // HACK: Disable back press (Issue arises due to remote control by RustDesk)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -327,6 +337,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)
                 ?.let { Logger.log(AuditLog.Event.CRASH, it) }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Bind UI to PlayerService via MediaController
+        val token = SessionToken(this, ComponentName(this, org.avventomedia.app.telefyna.service.PlayerService::class.java))
+        controllerFuture = MediaController.Builder(this, token).buildAsync()
+        controllerFuture?.addListener({
+            try {
+                mediaController = controllerFuture?.get()
+                val pv = findViewById<androidx.media3.ui.PlayerView>(R.id.player)
+                pv.player = mediaController
+            } catch (_: Exception) { }
+        }, MoreExecutors.directExecutor())
     }
 
     /**
@@ -747,6 +771,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     @OptIn(UnstableApi::class)
     private fun getPlayerView(reset: Boolean): PlayerView {
         val playerView: PlayerView = findViewById(R.id.player)
+        playerView.setKeepContentOnPlayerReset(true)
         if (reset) {
             playerView.showController()
             playerView.invalidate()
@@ -895,7 +920,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         try {
             player.stop()  // Stop playback
             player.clearMediaItems()  // Remove media items
-            GlobalScope.launch(Dispatchers.Main) {
+            lifecycleScope.launch(Dispatchers.Main) {
                 delay(300)
                 player.release()  // Fully release ExoPlayer
             }
@@ -934,7 +959,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     override fun onStop() {
         super.onStop()
-        player?.pause()
+        // Do not pause the player here; the PlayerService controls playback lifecycle.
+        // Detach the player from the PlayerView to avoid leaks.
+        try {
+            val pv = findViewById<androidx.media3.ui.PlayerView>(R.id.player)
+            pv.player = null
+        } catch (_: Exception) { }
+        // Release MediaController to avoid leaks
+        mediaController?.release()
+        mediaController = null
+        controllerFuture?.cancel(true)
+        controllerFuture = null
     }
 
     private fun getLastModifiedFor(index: Int): Long {
