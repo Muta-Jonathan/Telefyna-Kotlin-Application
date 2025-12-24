@@ -8,21 +8,19 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.annotation.RequiresApi
-import org.avventomedia.app.telefyna.Monitor
-import org.avventomedia.app.telefyna.audit.AuditLog
-import org.avventomedia.app.telefyna.audit.Logger
 
 class MaintenanceReceiver : BroadcastReceiver() {
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onReceive(context: Context, intent: Intent) {
-        val monitor = Monitor.instance
-        if (monitor != null) {
-            monitor.maintenance?.triggerMaintenance()
-            monitor.maintenance?.scheduleNextMaintenance()
+        // Route maintenance to PlayerService to recompute schedule and update playback
+        val svcIntent = Intent(context, org.avventomedia.app.telefyna.service.PlayerService::class.java).apply {
+            action = org.avventomedia.app.telefyna.service.PlayerService.ACTION_MAINTENANCE
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(svcIntent)
         } else {
-            Logger.log(AuditLog.Event.ERROR, "Monitor instance is null in MaintenanceReceiver")
-            // Optional: Start Monitor activity or reschedule if critical
+            context.startService(svcIntent)
         }
     }
 }

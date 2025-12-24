@@ -11,6 +11,41 @@ ___
 [![Telefyna Demo](https://user-images.githubusercontent.com/29783151/126466086-2dc758df-0c20-403d-8b95-0a808243c47a.jpg)](https://www.youtube.com/watch?v=Oy5aN6MTcXM)
 
 ---
+## New Architecture (2025)
+Telefyna has been refactored to a resilient MVVM + Foreground Service architecture for 24/7 playback.
+
+- Activity (Monitor): UI only. Binds to the PlayerService using MediaController/SessionToken. Detaches controller in onStop.
+- ViewModel (MonitorViewModel): Holds UI state (ticker, overlays, diagnostics) via StateFlow and viewModelScope.
+- Foreground Playback Service (PlayerService): MediaSessionService owning a single ExoPlayer + MediaSession; exposes a session to the UI. Starts foreground with a media notification.
+- Repositories: MediaRepository (I/O), ScheduleRepository (builds MediaItems). All heavy I/O runs on Dispatchers.IO.
+- Persistence: PrefsStore persists playback position (playlistIndex, mediaItemIndex, seekPosition).
+- Receivers: BootReceiver starts PlayerService on boot; MaintenanceReceiver routes maintenance to the service.
+- Manifest: Service declared with android:foregroundServiceType="mediaPlayback" and MediaSessionService intent-filter.
+
+Operational guarantees
+- Playback continues when the Activity is closed or killed.
+- Device reboot resumes playback automatically via BootReceiver.
+- Network loss can fall back to a filler playlist; playback recovers when network returns.
+- Single ExoPlayer instance owned by the service prevents leaks from player swaps.
+
+Manual verification
+1. Launch app. Notification appears; playback visible in PlayerView.
+2. Press Home/Back. Playback continues (notification stays).
+3. Reopen app. PlayerView re-attaches instantly.
+4. Reboot device. PlayerService starts and resumes playback.
+
+FAQ: Are previous OOM crashes over?
+- This architecture addresses common OOM/leak sources (Activity-owned ExoPlayer, GlobalScope timers, duplicate players). It significantly reduces risk, but OOM can still happen from:
+  - Very large bitmaps/animated GIF overlays or unbounded Glide caches.
+  - Extremely high-bitrate streams or decoder memory pressure on low-RAM devices.
+  - Reading whole files on main thread or leaking references in static singletons.
+- Mitigations included:
+  - Single ExoPlayer in service; PlayerView.setKeepContentOnPlayerReset(true).
+  - Detach controller in onStop, release controllers; no GlobalScope.
+  - Glide memory trim on destroy; use DiskCacheStrategy.AUTOMATIC and avoid oversized assets.
+  - Move I/O to Dispatchers.IO in repositories.
+- Recommendation: let it run 24–72 hours and observe memory with adb or Android Studio Profiler. Report anomalies with logs.
+
 ## Installation
 * Download the [Coming Soon]() and install it, grant the app Storage permission and reload it if necessary
 

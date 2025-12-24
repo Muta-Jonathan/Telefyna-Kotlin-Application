@@ -24,6 +24,15 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Telefynaapplication"
         tools:targetApi="31">
+
+        <service
+            android:name=".service.PlayerService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
         <activity
             android:name=".Monitor"
             android:alwaysRetainTaskState="true"
@@ -46,12 +55,6 @@
             </intent-filter>
         </receiver>
 
-        <receiver android:name=".listen.AutoStart" android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
 
         <receiver android:name=".listen.DateChange" android:exported="true">
             <intent-filter>
@@ -73,6 +76,7 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
