@@ -17,7 +17,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import org.avventomedia.app.telefyna.PrefsStore
 import org.avventomedia.app.telefyna.R
+import android.util.Log
 
 /**
  * Foreground playback service that owns a single ExoPlayer + MediaSession.
@@ -31,6 +37,7 @@ class PlayerService : MediaSessionService() {
         const val ACTION_MAINTENANCE = "org.avventomedia.app.telefyna.action.MAINTENANCE"
         private const val CHANNEL_ID = "telefyna_media"
         private const val NOTIFICATION_ID = 1001
+        private const val WATCHDOG_INTERVAL_MS = 30_000L
 
         fun start(context: Context) {
             val intent = Intent(context, PlayerService::class.java).apply {
@@ -48,14 +55,19 @@ class PlayerService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
 
+    private var prefsStore: PrefsStore? = null
+    private var watchdogJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        prefsStore = PrefsStore(applicationContext)
         ensureNotificationChannel()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        stopWatchdog()
         mediaSession?.release()
         player?.release()
         mediaSession = null
@@ -71,6 +83,8 @@ class PlayerService : MediaSessionService() {
             ACTION_MAINTENANCE -> {
                 // In a full implementation, recompute schedule and update playlist
                 ensureStarted()
+                // Nudge watchdog to run a maintenance pass
+                startWatchdog(force = true)
             }
             else -> ensureStarted()
         }
@@ -88,12 +102,54 @@ class PlayerService : MediaSessionService() {
             player = p
             mediaSession = MediaSession.Builder(this, p).build()
             startForeground(NOTIFICATION_ID, buildNotification())
+            startWatchdog()
+            // Load last known playback state (scaffold; actual restore needs media items prepared here)
+            serviceScope.launch {
+                try {
+                    val last = prefsStore?.load()
+                    Log.d("PlayerService", "[RESTORE] Loaded state: $last")
+                } catch (t: Throwable) {
+                    Log.w("PlayerService", "[RESTORE] Failed to load state: ${t.message}")
+                }
+            }
+        } else if (watchdogJob == null) {
+            startWatchdog()
         }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         ensureStarted()
         return mediaSession
+    }
+
+    private fun startWatchdog(force: Boolean = false) {
+        if (watchdogJob != null && !force) return
+        watchdogJob?.cancel()
+        watchdogJob = serviceScope.launch {
+            while (isActive) {
+                try {
+                    Log.d("PlayerService", "[WATCHDOG] tick")
+                    // Persist playhead periodically
+                    val p = player
+                    if (p != null) {
+                        val state = PrefsStore.PlaybackState(
+                            playlistIndex = 0, // TODO: wire real playlist index when scheduling migrates here
+                            mediaItemIndex = p.currentMediaItemIndex.takeIf { it >= 0 } ?: 0,
+                            seekPosition = p.currentPosition
+                        )
+                        prefsStore?.save(state)
+                    }
+                } catch (t: Throwable) {
+                    Log.w("PlayerService", "[WATCHDOG] error: ${t.message}")
+                }
+                delay(WATCHDOG_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun stopWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = null
     }
 
     private fun buildNotification(): Notification {

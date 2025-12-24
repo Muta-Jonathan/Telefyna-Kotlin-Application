@@ -28,6 +28,7 @@ import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.Toast
 import android.widget.VideoView
+import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
@@ -58,6 +59,10 @@ import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import androidx.activity.viewModels
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
 import org.apache.commons.lang3.StringUtils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
@@ -121,6 +126,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     var maintenanceHandler: Handler? = null
         private set
+
+    // ViewModel: holds UI state for ticker/overlays/diagnostics
+    private val viewModel: MonitorViewModel by viewModels()
 
     // Media3 controller that binds UI to PlayerService session
     private var controllerFuture: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
@@ -290,6 +298,16 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // Ensure the PlayerService is running to own playback lifecycle
         org.avventomedia.app.telefyna.service.PlayerService.start(applicationContext)
 
+        // Observe ViewModel state (MVVM wiring)
+        val diagnosticsView = findViewById<android.widget.TextView>(R.id.diagnosticsText)
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                viewModel.uiState.collectLatest { state ->
+                    renderUi(state, diagnosticsView)
+                }
+            }
+        }
+
         // HACK: Disable back press (Issue arises due to remote control by RustDesk)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -327,7 +345,24 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         // Initialize permissions
         initialiseWithPermissions()
-        maintenance!!.run()
+        // Route initial maintenance to PlayerService instead of running in Activity
+        try {
+            val svcIntent = Intent(this, org.avventomedia.app.telefyna.service.PlayerService::class.java).apply {
+                action = org.avventomedia.app.telefyna.service.PlayerService.ACTION_MAINTENANCE
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(svcIntent)
+            } else {
+                startService(svcIntent)
+            }
+        } catch (_: Exception) { }
+
+        // TEMP: Kick legacy maintenance to avoid blank screen until service prepares media
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                maintenance?.run()
+            }
+        } catch (_: Throwable) { }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -351,6 +386,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 pv.player = mediaController
             } catch (_: Exception) { }
         }, MoreExecutors.directExecutor())
+
     }
 
     /**
@@ -970,6 +1006,36 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         mediaController = null
         controllerFuture?.cancel(true)
         controllerFuture = null
+    }
+
+    // MVVM: render UI from ViewModel state
+    private fun renderUi(state: MonitorViewModel.UiState, diagnosticsView: TextView) {
+        // Diagnostics panel
+        diagnosticsView.visibility = if (state.diagnostics.isNotBlank()) View.VISIBLE else View.GONE
+        diagnosticsView.text = state.diagnostics
+
+        // Overlay (simple toggle for lower third visibility for now)
+        try {
+            val lower = findViewById<VideoView>(R.id.lowerThird)
+            lower?.visibility = if (state.showOverlay) View.VISIBLE else View.GONE
+        } catch (_: Exception) { }
+
+        // Ticker: only update from ViewModel when tickerText is non-blank.
+        // This prevents overriding the legacy ticker that Monitor shows via initTickers/showTicker.
+        try {
+            val rv = findViewById<RecyclerView>(R.id.tickerRecyclerView)
+            if (rv != null) {
+                if (rv.layoutManager == null) {
+                    rv.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+                }
+                if (state.tickerText.isNotBlank()) {
+                    val items = listOf(TickerItem(text = state.tickerText, time = true))
+                    rv.adapter = TickerAdapter(items, displacement = 2)
+                    rv.visibility = View.VISIBLE
+                }
+                // If tickerText is blank, do nothing so existing ticker (if any) keeps running.
+            }
+        } catch (_: Exception) { }
     }
 
     private fun getLastModifiedFor(index: Int): Long {
