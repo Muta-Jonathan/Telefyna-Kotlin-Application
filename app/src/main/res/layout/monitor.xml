@@ -11,7 +11,8 @@
     <androidx.media3.ui.PlayerView
         android:id="@+id/player"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:layout_gravity="center"
         android:focusable="false"
         app:controller_layout_id="@layout/graphics"
@@ -21,5 +22,16 @@
         app:surface_type="texture_view"
         android:animateLayoutChanges="true"
         app:resize_mode="fill"/>
+
+    <!-- Simple diagnostics text wired to ViewModel -->
+    <TextView
+        android:id="@+id/diagnosticsText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:textColor="#FFFFFF"
+        android:background="#66000000"
+        android:visibility="gone"
+        android:textSize="14sp" />
 
 </androidx.appcompat.widget.LinearLayoutCompat>
