@@ -1493,6 +1493,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     fillingForLackOfInternet = false
                     failedBecauseOfInternetIndex = null
                     maintenance?.triggerMaintenance()
+                    // Continue monitoring loop even after recovery
+                    scheduleKeepAlive()
                 } else {
                     if (delay != null) {
                         scheduleKeepAlive()
@@ -1583,6 +1585,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         fillingForLackOfInternet = false
                         failedBecauseOfInternetIndex = null
                         maintenance?.triggerMaintenance()
+                        // Continue monitoring loop even after recovery
+                        scheduleKeepOnAir()
                     } else {
                         offAir = player == null || !player!!.isPlaying
                         if (offAir) {

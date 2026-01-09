@@ -14,3 +14,15 @@
 .cxx
 local.properties
 /release
+/.app/release
+*.keystore
+*.jks
+*.log
+*.hprof
+*.orig
+.gradle/
+/gradle/
+/build/
+/captures/
+/.idea/
+*/build/

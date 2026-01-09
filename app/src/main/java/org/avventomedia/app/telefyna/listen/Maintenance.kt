@@ -213,23 +213,33 @@ class Maintenance {
     @RequiresApi(Build.VERSION_CODES.O)
     private fun playCurrentSlot() {
         if (startedSlotsToday.isNotEmpty()) {
-            // Filter to only slots that have actually started (time <= now)
             val now = Calendar.getInstance()
-            val nowTimeStr = String.format("%02d:%02d", now[Calendar.HOUR_OF_DAY], now[Calendar.MINUTE])
+            val nowMinutes = now[Calendar.HOUR_OF_DAY] * 60 + now[Calendar.MINUTE]
             
-            // Get slots that have started (slot time <= now), sorted descending (most recent first)
+            // Filter to only slots that have actually started (slot time <= now)
+            // Use numeric comparison to handle both "9:00" and "09:00" formats
             val validSlots = startedSlotsToday.keys
-                .filter { it <= nowTimeStr }
-                .sortedDescending()
+                .filter { slotTime ->
+                    val parts = slotTime.split(":")
+                    if (parts.size == 2) {
+                        val slotMinutes = parts[0].toIntOrNull()?.times(60)?.plus(parts[1].toIntOrNull() ?: 0) ?: 0
+                        slotMinutes <= nowMinutes
+                    } else false
+                }
+                .sortedByDescending { slotTime ->
+                    // Sort by time value, not string
+                    val parts = slotTime.split(":")
+                    (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0)
+                }
             
             if (validSlots.isNotEmpty()) {
                 val currentPlaylist = startedSlotsToday[validSlots[0]]
-                Logger.log(AuditLog.Event.MAINTENANCE, "Selected slot: ${validSlots[0]} from ${validSlots.size} valid slot(s)")
+                Logger.log(AuditLog.Event.MAINTENANCE, "Selected slot: ${validSlots[0]} from ${validSlots.size} valid slot(s) (now=${now[Calendar.HOUR_OF_DAY]}:${now[Calendar.MINUTE]})")
                 // isCurrentSlot should only be true here
                 Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, Monitor.instance!!)
             } else {
                 // No valid slots have started yet, play filler
-                Logger.log(AuditLog.Event.MAINTENANCE, "No valid slots started yet (now=$nowTimeStr), playing filler")
+                Logger.log(AuditLog.Event.MAINTENANCE, "No valid slots started yet (now=${now[Calendar.HOUR_OF_DAY]}:${now[Calendar.MINUTE]}), playing filler")
                 Monitor.instance?.let { it.switchNow(it.getSecondDefaultIndex(), false, it) }
             }
         } else { // Play first default
