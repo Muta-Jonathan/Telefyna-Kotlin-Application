@@ -54,10 +54,16 @@ data class Playlist(
     val isUsingExternalStorage: Boolean
         get() = usingExternalStorage
 
+    /**
+     * Returns true if this playlist's scheduled start time is at or before the current time.
+     * A playlist is "started" if: (scheduled hour < now hour) OR (same hour AND scheduled min <= now min)
+     */
     fun isStarted(): Boolean {
-        val current = Calendar.getInstance()
-        val (hour, min) = start?.split(":")?.map { it.toInt() } ?: return false
-        return hour < current[Calendar.HOUR_OF_DAY] || (hour == current[Calendar.HOUR_OF_DAY] && min <= current[Calendar.MINUTE])
+        val now = Calendar.getInstance()
+        val (scheduledHour, scheduledMin) = start?.split(":")?.map { it.toInt() } ?: return false
+        val nowHour = now[Calendar.HOUR_OF_DAY]
+        val nowMin = now[Calendar.MINUTE]
+        return (scheduledHour < nowHour) || (scheduledHour == nowHour && scheduledMin <= nowMin)
     }
 
     fun getScheduledTime(): Long {

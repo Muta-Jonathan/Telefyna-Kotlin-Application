@@ -1487,10 +1487,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 if (getBackupConfigResetFile().exists()) backupConfig(true)
 
                 if (nowPlayingIndex == getSecondDefaultIndex() && fillingForLackOfInternet && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
-                    fillingForLackOfInternet = false
                     Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                    switchNow(failedBecauseOfInternetIndex!!, false, this)
+                    // Re-evaluate schedule instead of blindly returning to stale index
+                    // This ensures we play the CURRENT valid schedule, not the one from before outage
+                    fillingForLackOfInternet = false
                     failedBecauseOfInternetIndex = null
+                    maintenance?.triggerMaintenance()
                 } else {
                     if (delay != null) {
                         scheduleKeepAlive()
@@ -1575,10 +1577,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         fillingForLackOfInternet &&
                         Utils.internetConnected() &&
                         failedBecauseOfInternetIndex != null) {
-                        fillingForLackOfInternet = false
                         Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                        switchNow(failedBecauseOfInternetIndex!!, false, this@Monitor)
+                        // Re-evaluate schedule instead of blindly returning to stale index
+                        // This ensures we play the CURRENT valid schedule, not the one from before outage
+                        fillingForLackOfInternet = false
                         failedBecauseOfInternetIndex = null
+                        maintenance?.triggerMaintenance()
                     } else {
                         offAir = player == null || !player!!.isPlaying
                         if (offAir) {

@@ -31,6 +31,7 @@ class Maintenance {
 
     private var startedSlotsToday: MutableMap<String, CurrentPlaylist> = HashMap()
     private var pendingIntents: MutableMap<String, PendingIntent> = HashMap()
+    private var lastScheduleDay: Int = -1
 
     /**
      * Called when Telefyna is launched and every day at midnight
@@ -38,6 +39,14 @@ class Maintenance {
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     fun triggerMaintenance() {
+        val today = Calendar.getInstance()[Calendar.DAY_OF_YEAR]
+        
+        // Detect day rollover and reset schedule state
+        if (lastScheduleDay != -1 && lastScheduleDay != today) {
+            Logger.log(AuditLog.Event.MAINTENANCE, "Day rollover detected (day $lastScheduleDay -> $today), resetting schedule state")
+        }
+        lastScheduleDay = today
+        
         cancelPendingIntents()
         Monitor.instance?.initialise()
         // Switch to firstDefault when automation is turned off
@@ -204,10 +213,25 @@ class Maintenance {
     @RequiresApi(Build.VERSION_CODES.O)
     private fun playCurrentSlot() {
         if (startedSlotsToday.isNotEmpty()) {
-            val slots = startedSlotsToday.keys.toList().sortedDescending()
-            val currentPlaylist = startedSlotsToday[slots[0]]
-            // isCurrentSlot should only be true here
-            Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, Monitor.instance!!)
+            // Filter to only slots that have actually started (time <= now)
+            val now = Calendar.getInstance()
+            val nowTimeStr = String.format("%02d:%02d", now[Calendar.HOUR_OF_DAY], now[Calendar.MINUTE])
+            
+            // Get slots that have started (slot time <= now), sorted descending (most recent first)
+            val validSlots = startedSlotsToday.keys
+                .filter { it <= nowTimeStr }
+                .sortedDescending()
+            
+            if (validSlots.isNotEmpty()) {
+                val currentPlaylist = startedSlotsToday[validSlots[0]]
+                Logger.log(AuditLog.Event.MAINTENANCE, "Selected slot: ${validSlots[0]} from ${validSlots.size} valid slot(s)")
+                // isCurrentSlot should only be true here
+                Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, Monitor.instance!!)
+            } else {
+                // No valid slots have started yet, play filler
+                Logger.log(AuditLog.Event.MAINTENANCE, "No valid slots started yet (now=$nowTimeStr), playing filler")
+                Monitor.instance?.let { it.switchNow(it.getSecondDefaultIndex(), false, it) }
+            }
         } else { // Play first default
             Monitor.instance?.let { Monitor.instance!!.switchNow(it.getFirstDefaultIndex(), false, Monitor.instance!!) }
         }

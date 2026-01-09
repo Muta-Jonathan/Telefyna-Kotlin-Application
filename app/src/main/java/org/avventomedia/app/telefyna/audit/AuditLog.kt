@@ -24,7 +24,7 @@ class AuditLog {
         INTERNET_RESTORED("Internet has been restored"),
         BACK_UP("Running backup"),
         RESTARTING("Restarting Telefyna"),
-        TIME_CHANGED("Time changed"),
+        TIME_CHANGED("Time/date changed: %s"),
 
         // scheduler
         PLAYLIST("$SPLITTER[ Preparing to play playlist: %s: %s"),
