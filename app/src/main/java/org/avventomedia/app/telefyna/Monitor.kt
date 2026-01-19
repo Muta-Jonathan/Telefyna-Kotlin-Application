@@ -51,7 +51,6 @@ import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.apache.commons.lang3.StringUtils
@@ -138,6 +137,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
     private val keepOnAirReceiver = KeepOnAirReceiver()
+    private var isKeepOnAirRegistered: Boolean = false
 
     var dateFormat: SimpleDateFormat? = null
         private set
@@ -297,8 +297,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         instance = this
         dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         maintenance = Maintenance()
-        maintenanceHandler = Handler()
-        handler = Handler()
+        maintenanceHandler = Handler(Looper.getMainLooper())
+        handler = Handler(Looper.getMainLooper())
         sharedPreferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
 
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
@@ -314,6 +314,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         } else {
             registerReceiver(keepOnAirReceiver, filter)
         }
+        isKeepOnAirRegistered = true
 
         // Initialize permissions
         initialiseWithPermissions()
@@ -519,7 +520,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
             if (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
                 (configuration?.wait)?.times(1000L)?.let {
-                    instance?.handler?.removeCallbacksAndMessages(null) // Cleanup before scheduling delay
+                    handler?.removeCallbacksAndMessages(null) // Cleanup before scheduling delay
                     lifecycleScope.launch {
                         delay(it)
                         if (Utils.internetConnected()) {
@@ -673,7 +674,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             fadeInAnimator.start()
                             Logger.log(AuditLog.Event.FADE_PLAYED, "fade in transition played")
                         }
-                        instance?.let { player!!.addListener(it) }
                         player!!.playWhenReady = true
                         playerView.player = player // Explicitly attach new player to PlayerView
                         player!!.addListener(this) // Add listener once
@@ -891,18 +891,29 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun endPlayerSafely(player: Player?) {
-        if (player == null) return  // Avoid unnecessary execution
+        if (player == null) return
         try {
-            player.stop()  // Stop playback
-            player.clearMediaItems()  // Remove media items
-            GlobalScope.launch(Dispatchers.Main) {
-                delay(300)
-                player.release()  // Fully release ExoPlayer
+            // Detach from UI if this is the currently attached player
+            val view = try { getPlayerView(false) } catch (_: Exception) { null }
+            if (player === view?.player) {
+                view.player = null
+            }
+            // Remove listener to break references back to Activity
+            player.removeListener(this)
+            // Stop and clear items
+            player.stop()
+            player.clearMediaItems()
+            // Clear surfaces to help GC on TVs
+            (player as? ExoPlayer)?.clearVideoSurface()
+            // Release on main thread without delay to avoid leak window
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                player.release()
+            } else {
+                Handler(Looper.getMainLooper()).post { player.release() }
             }
         } catch (e: Exception) {
-            Logger.log(AuditLog.Event.PLAYLIST_ERROR, "${e.localizedMessage}")
+            Logger.log(AuditLog.Event.PLAYLIST_ERROR, e.localizedMessage ?: "release error")
         }
-
     }
 
 
@@ -913,13 +924,33 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onDestroy() {
         super.onDestroy()
         shutDownHook()
-        endPlayerSafely(player);
-        endPlayerSafely(previousPlayer);
 
+        // Detach PlayerView from players to break view -> player -> activity chain
+        try {
+            val pv = getPlayerView(false)
+            pv.player = null
+        } catch (_: Exception) { }
+
+        // End players safely
+        endPlayerSafely(player)
+        endPlayerSafely(previousPlayer)
+        player = null
+        previousPlayer = null
+
+        // Clear handlers
         maintenanceHandler?.removeCallbacksAndMessages(null)
         handler?.removeCallbacksAndMessages(null)
-        // Unregister receiver and cancel alarm
-        unregisterReceiver(keepOnAirReceiver)
+        animationHandler.removeCallbacksAndMessages(null)
+        maintenanceHandler = null
+        handler = null
+
+        // Unregister receiver and cancel alarm safely
+        if (isKeepOnAirRegistered) {
+            try {
+                unregisterReceiver(keepOnAirReceiver)
+            } catch (_: IllegalArgumentException) { }
+            isKeepOnAirRegistered = false
+        }
         val intent = Intent(KEEP_ON_AIR_ACTION)
         val pendingIntent = PendingIntent.getBroadcast(
             this, 0, intent,
@@ -927,9 +958,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         )
         alarmManager?.cancel(pendingIntent)
 
+        // Aggressive memory trim for TV boxes
         Glide.get(this).clearMemory()
         Glide.get(this).trimMemory(TRIM_MEMORY_COMPLETE)
 
+        // Avoid leaking static activity reference
+        instance = null
     }
 
     override fun onStop() {
