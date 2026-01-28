@@ -26,6 +26,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.activity.OnBackPressedCallback
@@ -92,7 +93,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val PLAYLIST_LAST_PLAYED = "PLAYLIST_LAST_PLAYED"
         private const val PLAYLIST_SEEK_TO = "PLAYLIST_SEEK_TO"
         private const val PLAYLIST_PLAY_FORMAT = "%s-%d"
-        private const val REQUEST_CODE_PERMISSIONS = 123
+        private const val REQUEST_CODE_PERMISSIONS = 100
         private const val PERMISSION_REQUEST_CODE = 100
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
         var instance: Monitor? = null // for player am using media3
@@ -311,6 +312,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         val filter = IntentFilter(KEEP_ON_AIR_ACTION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // API 33+
             registerReceiver(keepOnAirReceiver, filter, RECEIVER_NOT_EXPORTED)
+            // Register a no-op predictive back callback to silence warning and keep back disabled
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT
+            ) { /* no-op to keep back disabled intentionally */ }
         } else {
             registerReceiver(keepOnAirReceiver, filter)
         }
@@ -318,7 +323,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         // Initialize permissions
         initialiseWithPermissions()
-        maintenance!!.run()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -327,6 +331,19 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (intent.getBooleanExtra(TelefynaUnCaughtExceptionHandler.CRASH, false)) {
             intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)
                 ?.let { Logger.log(AuditLog.Event.CRASH, it) }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == MANAGE_STORAGE_REQUEST_CODE) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (Environment.isExternalStorageManager()) {
+                    proceedAfterPermissionsGranted()
+                } else {
+                    Toast.makeText(this, "Storage permission required to proceed", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -434,6 +451,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             }
         } catch (e: IOException) {
             Logger.log(AuditLog.Event.ERROR, e.message ?: "Unknown error")
+        }
+    }
+
+    // Proceed with initialization steps that require permissions
+    private fun proceedAfterPermissionsGranted() {
+        try {
+            initialise()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                maintenance?.run()
+            } else {
+                maintenance?.let { /* no-op on older APIs if run() requires O */ }
+            }
+        } catch (e: Exception) {
+            Logger.log(AuditLog.Event.ERROR, e.localizedMessage ?: "post-permission init error")
         }
     }
 
@@ -838,8 +869,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
          * The playlist was valid at prepare() time, but the file vanishes after playback starts.
          */
         if (!filePath.isNullOrEmpty() && !File(filePath).exists()) {
-            Logger.log(AuditLog.Event.ERROR, "Missing file detected: $filePath — switching to filler.")
-            switchNow(getSecondDefaultIndex(), false, this)
+            if (currentPlaylist?.type == Playlist.Type.ONLINE) {
+                Logger.log(AuditLog.Event.ERROR, "ONLINE resource unavailable (path missing in local FS for stream): $filePath — switching to filler.")
+                failedBecauseOfInternetIndex = nowPlayingIndex
+                fillingForLackOfInternet = true
+                switchNow(getSecondDefaultIndex(), false, this)
+            } else {
+                Logger.log(AuditLog.Event.ERROR, "Missing local file detected: $filePath — switching to filler.")
+                switchNow(getSecondDefaultIndex(), false, this)
+            }
             return
         }
 
@@ -851,6 +889,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             is UnknownHostException, is IOException -> {
                 Logger.log(AuditLog.Event.NO_INTERNET, "Failing to play program because of no internet connection")
                 failedBecauseOfInternetIndex = nowPlayingIndex
+                fillingForLackOfInternet = true
                 // this will wait for set time on config before reloading
             }
             is UnrecognizedInputFormatException -> {
@@ -990,6 +1029,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         val permissionsToRequest = missingPermissions()
         if (permissionsToRequest.isNotEmpty()) {
             askForPermissions(permissionsToRequest)
+        } else {
+            // Permissions already granted; proceed to initialize app components
+            proceedAfterPermissionsGranted()
         }
     }
 
@@ -1064,11 +1106,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
             }
 
-            if (deniedPermissions.isNotEmpty()) {
-                // Optionally, show a dialog explaining why the permissions are needed
-                // and then request them again or guide the user to settings
-
-                // For simplicity, re-request the denied permissions
+            if (deniedPermissions.isEmpty()) {
+                // All required permissions granted, continue initialization immediately
+                proceedAfterPermissionsGranted()
+            } else {
+                // Re-request only the denied permissions (same behavior as before)
                 askForPermissions(deniedPermissions)
             }
         }
@@ -1137,7 +1179,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 val messages = newsData.getMessagesArray()
                 if (messages.isNotEmpty()) {
                     initTickers(newsData)
-                    newsData.getStartsArray().forEach { s ->
+                    val starts = newsData.getStartsArray()
+                    // Immediate show if starts is empty or contains 0
+                    val showImmediately = starts.isEmpty() || starts.any { it == 0.0 }
+                    if (showImmediately) {
+                        showTicker(newsData)
+                    }
+                    // Keep existing scheduled shows for other starts without changing cadence
+                    starts.forEach { s ->
                         val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
                         if (start >= nowPosition) {
                             val delayMillis = start - nowPosition
@@ -1165,12 +1214,31 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun hideTicker() {
-        tickerRecyclerView.let {
-            if (it.visibility != View.GONE) {
-                it.visibility = View.GONE
-                Logger.log(AuditLog.Event.DISPLAY_NEWS_OFF)
-                Logger.log(AuditLog.Event.DISPLAY_TIME_OFF)
-            }
+        setTickerVisible(false)
+    }
+
+    private fun setTickerVisible(visible: Boolean) {
+        val rv = if (::tickerRecyclerView.isInitialized) tickerRecyclerView else return
+        // Ensure runs on main thread
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Handler(Looper.getMainLooper()).post { setTickerVisible(visible) }
+            return
+        }
+        rv.clearAnimation()
+        rv.animate().cancel()
+        rv.alpha = if (visible) 1f else 0f
+        rv.visibility = if (visible) View.VISIBLE else View.GONE
+        // Try to ensure marquee restarts when becoming visible
+        try {
+            val tv: TextView = rv.findViewById(R.id.tickerText)
+            tv.isSelected = visible
+        } catch (_: Exception) { }
+        if (visible) {
+            // Log on
+            Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, "[DEBUG_LOG] ticker visible ON")
+        } else {
+            Logger.log(AuditLog.Event.DISPLAY_NEWS_OFF)
+            Logger.log(AuditLog.Event.DISPLAY_TIME_OFF)
         }
     }
 
@@ -1241,18 +1309,23 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     @RequiresApi(Build.VERSION_CODES.M)
     private fun initTickers(news: News) {
-        // Initialize the RecyclerView
-        tickerRecyclerView = findViewById(R.id.tickerRecyclerView)
-        tickerRecyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        // Initialize the RecyclerView once and reuse adapter for updates
+        if (!::tickerRecyclerView.isInitialized) {
+            tickerRecyclerView = findViewById(R.id.tickerRecyclerView)
+            tickerRecyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        }
         val tickerItems = listOf(
             TickerItem(text = news.messages, time = news.showTime)
         )
-        // Initialize the adapter with ticker items
-        tickerAdapter = TickerAdapter(
-            tickerItems,
-            displacement = news.speed.getDisplacement(),
-        )
-        tickerRecyclerView.adapter = tickerAdapter
+        if (!::tickerAdapter.isInitialized) {
+            tickerAdapter = TickerAdapter(
+                tickerItems,
+                displacement = news.speed.getDisplacement(),
+            )
+            tickerRecyclerView.adapter = tickerAdapter
+        } else {
+            tickerAdapter.update(tickerItems)
+        }
     }
 
     private fun showRepeatProgramWatermark() {
@@ -1325,11 +1398,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun fadeInRecyclerView(recyclerView: RecyclerView) {
-        animationHandler.removeCallbacksAndMessages(null)
-        animationHandler.post {
-            recyclerView.visibility = View.VISIBLE
-            recyclerView.animate().alpha(1f).setDuration(1000).start()
-        }
+        setTickerVisible(true)
     }
 
     private fun showLogo(logoPosition: Graphics.LogoPosition?) {
@@ -1419,7 +1488,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 if (getBackupConfigFile().exists()) backupConfig(false)
                 if (getBackupConfigResetFile().exists()) backupConfig(true)
 
-                if (nowPlayingIndex == getSecondDefaultIndex() && fillingForLackOfInternet && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
+                if (nowPlayingIndex == getSecondDefaultIndex() && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
                     fillingForLackOfInternet = false
                     Logger.log(AuditLog.Event.INTERNET_RESTORED)
                     switchNow(failedBecauseOfInternetIndex!!, false, this)
@@ -1460,11 +1529,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     fun restartApp() {
         maintenance?.cancelPendingIntents()
-        val intent = Intent(instance, instance!!::class.java)
-        val mPendingIntent = PendingIntent.getActivity(
-            instance, 700000001, intent,
-            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        alarmManager?.set(AlarmManager.RTC, System.currentTimeMillis() + 100, mPendingIntent)
+        // Schedule a safe restart broadcast that avoids background activity launch
+        org.avventomedia.app.telefyna.listen.RestartReceiver.scheduleRestart(this, 100L)
         Logger.log(AuditLog.Event.RESTARTING)
         instance?.finish()
         exitProcess(2)
@@ -1505,7 +1571,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     if (getBackupConfigResetFile().exists()) backupConfig(true)
 
                     if (nowPlayingIndex == getSecondDefaultIndex() &&
-                        fillingForLackOfInternet &&
                         Utils.internetConnected() &&
                         failedBecauseOfInternetIndex != null) {
                         fillingForLackOfInternet = false

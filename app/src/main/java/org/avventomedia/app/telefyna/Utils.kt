@@ -24,6 +24,26 @@ object Utils {
      */
     @JvmStatic
     fun internetConnected(): Boolean {
+        // Prefer ConnectivityManager with NetworkCapabilities; fallback to ping
+        try {
+            val ctx = Telefyna.appContext
+            if (ctx != null) {
+                val cm = ctx.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+                val active = cm.activeNetwork
+                if (active != null) {
+                    val caps = cm.getNetworkCapabilities(active)
+                    if (caps != null) {
+                        val hasInternet = caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        val validated = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                        } else true
+                        if (hasInternet && validated) return true
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Ignore and fallback to ping
+        }
         return try {
             val process = Runtime.getRuntime().exec("/system/bin/ping -c 1 8.8.4.4")
             process.waitFor() == 0

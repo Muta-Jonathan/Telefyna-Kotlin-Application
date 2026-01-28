@@ -11,6 +11,7 @@
         android:required="false" />
 
     <application
+        android:name=".Telefyna"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
         android:banner="@mipmap/ic_launcher"
@@ -22,6 +23,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.Telefynaapplication"
         tools:targetApi="31">
         <activity
@@ -52,6 +54,7 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <receiver android:name=".listen.RestartReceiver" android:exported="false" />
 
         <receiver android:name=".listen.DateChange" android:exported="true">
             <intent-filter>

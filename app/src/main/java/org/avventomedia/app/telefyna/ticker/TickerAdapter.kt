@@ -13,14 +13,22 @@ import androidx.recyclerview.widget.RecyclerView
 import org.avventomedia.app.telefyna.R
 
 class TickerAdapter(
-    private val items: List<TickerItem>,
+    items: List<TickerItem>,
     private val displacement: Int, // Speed or displacement for scrolling
 ) : RecyclerView.Adapter<TickerAdapter.TickerViewHolder>() {
+
+    private val items: MutableList<TickerItem> = items.toMutableList()
 
     inner class TickerViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val whiteLabel: TextView = itemView.findViewById(R.id.whiteSection)
         val tickerText: TextView = itemView.findViewById(R.id.tickerText)
         val timeClock: TextView = itemView.findViewById(R.id.timeSection)
+    }
+
+    fun update(newItems: List<TickerItem>) {
+        items.clear()
+        items.addAll(newItems)
+        notifyDataSetChanged()
     }
 
     @SuppressLint("ResourceAsColor")
@@ -46,14 +54,11 @@ class TickerAdapter(
         timeClock.visibility = if (isTimeEnabled) View.VISIBLE else View.GONE
         whiteSection.visibility = if (isTimeEnabled && hasText) View.VISIBLE else View.GONE
 
-        // Modify the ticker text here by adding space on Start scroll before setting it
-        val modifiedText = "${StringUtils.spaces120}${tickerItem.text}" // Add space before the text
-
-        holder.tickerText.text = modifiedText
-        // Apply displacement for scrolling effect (if needed)
-        holder.tickerText.translationX = (-displacement * position).toFloat()
-        // Start the marquee animation
-        holder.tickerText.isSelected = true // This triggers the marquee
+        // Build the ticker text once per bind; prefix cached spaces to create lead-in for marquee
+        val modifiedText = "${StringUtils.spaces120}${tickerItem.text ?: ""}"
+        textView.text = modifiedText
+        // Ensure marquee runs reliably
+        textView.isSelected = true
     }
 
     override fun getItemCount(): Int = items.size
