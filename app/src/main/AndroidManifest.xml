@@ -12,6 +12,7 @@
 
     <application
         android:name=".Telefyna"
+        android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
         android:banner="@mipmap/ic_launcher"

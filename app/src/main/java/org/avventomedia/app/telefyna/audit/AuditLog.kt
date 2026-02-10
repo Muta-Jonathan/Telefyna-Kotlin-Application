@@ -25,6 +25,7 @@ class AuditLog {
         BACK_UP("Running backup"),
         RESTARTING("Restarting Telefyna"),
         TIME_CHANGED("Time changed"),
+        FILE_OBSERVER("%s"),
 
         // scheduler
         PLAYLIST("$SPLITTER[ Preparing to play playlist: %s: %s"),
@@ -52,7 +53,6 @@ class AuditLog {
         DISPLAY_REPEAT_PROGRAM_WATERMARK_ON("Turning ON Repeat Program Watermark"),
         FADE_PLAYED("Fade played, %s"),
 
-
         // system
         EMAIL("Sending email: '%s' to: %s %s"),
         NO_INTERNET("%s");
@@ -66,7 +66,7 @@ class AuditLog {
                 HEARTBEAT, KEY_PRESS, CONFIGURATION, MAINTENANCE,
                 METRICS, ERROR, CACHE_NOW_PLAYING_RESUME, RETRIEVE_NOW_PLAYING_RESUME,
                 STUCK, INTERNET_RESTORED, EMPTY_FILLERS, CRASH, BACK_UP,
-                RESTARTING, TIME_CHANGED
+                RESTARTING, TIME_CHANGED, FILE_OBSERVER
             )
             val schedulers = arrayOf(
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,

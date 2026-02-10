@@ -15,13 +15,13 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
-import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.StrictMode
+import android.provider.Settings
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -51,23 +51,6 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import org.apache.commons.lang3.StringUtils
-import org.avventomedia.app.telefyna.audit.AuditLog
-import org.avventomedia.app.telefyna.audit.Logger
-import org.avventomedia.app.telefyna.listen.Maintenance
-import org.avventomedia.app.telefyna.listen.TelefynaUnCaughtExceptionHandler
-import org.avventomedia.app.telefyna.modal.Config
-import org.avventomedia.app.telefyna.modal.Graphics
-import org.avventomedia.app.telefyna.modal.LowerThird
-import org.avventomedia.app.telefyna.modal.News
-import org.avventomedia.app.telefyna.modal.Playlist
-import org.avventomedia.app.telefyna.modal.Seek
-import org.avventomedia.app.telefyna.player.TelefynaRenderersFactory
-import org.avventomedia.app.telefyna.ticker.TickerAdapter
-import org.avventomedia.app.telefyna.ticker.TickerItem
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
@@ -82,9 +65,27 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.system.exitProcess
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.apache.commons.lang3.StringUtils
+import org.avventomedia.app.telefyna.audit.AuditLog
+import org.avventomedia.app.telefyna.audit.Logger
+import org.avventomedia.app.telefyna.listen.InitFileObserver
+import org.avventomedia.app.telefyna.listen.Maintenance
+import org.avventomedia.app.telefyna.listen.TelefynaUnCaughtExceptionHandler
+import org.avventomedia.app.telefyna.modal.Config
+import org.avventomedia.app.telefyna.modal.Graphics
+import org.avventomedia.app.telefyna.modal.LowerThird
+import org.avventomedia.app.telefyna.modal.News
+import org.avventomedia.app.telefyna.modal.Playlist
+import org.avventomedia.app.telefyna.modal.Seek
+import org.avventomedia.app.telefyna.player.TelefynaRenderersFactory
+import org.avventomedia.app.telefyna.ticker.TickerAdapter
+import org.avventomedia.app.telefyna.ticker.TickerItem
 
 @UnstableApi
-class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListener, Player.Listener {
+class Monitor :
+        AppCompatActivity(), PlayerNotificationManager.NotificationListener, Player.Listener {
 
     companion object {
         const val PREFERENCES = "TelefynaPrefs"
@@ -98,7 +99,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
         var instance: Monitor? = null // for player am using media3
         private const val KEEP_ON_AIR_ACTION = "org.avventomedia.app.telefyna.KEEP_ON_AIR"
-        private const val CROSS_FADE_DURATION = 1000L // Reduce fade duration for faster switching to 2seconds
+        private const val CROSS_FADE_DURATION =
+                1000L // Reduce fade duration for faster switching to 2seconds
         private val animationHandler = Handler(Looper.getMainLooper())
         // Define a reusable Gson instance outside the function to avoid repeated creation
         private val gson = GsonBuilder().setPrettyPrinting().create()
@@ -119,6 +121,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private set
 
     var maintenance: Maintenance? = null
+
+    private var initFileObserver: InitFileObserver? = null
 
     private var nowPlayingIndex: Int? = null
     private var failedBecauseOfInternetIndex: Int? = null
@@ -147,7 +151,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         playlistByIndex.add(playlist)
     }
 
-    // This is the first default playlist, it plays whenever automation is disabled or nothing is scheduled/available
+    // This is the first default playlist, it plays whenever automation is disabled or nothing is
+    // scheduled/available
     fun getFirstDefaultIndex(): Int {
         return 0
     }
@@ -172,23 +177,31 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun cachePlayingAt(index: Int, seekTo: Long, noProgramTransition: Boolean) {
-        val at = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
-            0
-        } else {
-            nowProgramItem ?: 0
-        }
+        val at =
+                if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type &&
+                                startOnePlayProgramItem != null
+                ) {
+                    0
+                } else {
+                    nowProgramItem ?: 0
+                }
 
-        var atValue = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
-            startOnePlayProgramItem ?: 0
-        } else {
-            nowProgramItem ?: 0
-        }
+        var atValue =
+                if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type &&
+                                startOnePlayProgramItem != null
+                ) {
+                    startOnePlayProgramItem ?: 0
+                } else {
+                    nowProgramItem ?: 0
+                }
 
-        atValue = if (noProgramTransition && Playlist.Type.LOCAL_RESUMING_ONE != currentPlaylist?.type) {
-            atValue - 1
-        } else {
-            atValue
-        }
+        atValue =
+                if (noProgramTransition && Playlist.Type.LOCAL_RESUMING_ONE != currentPlaylist?.type
+                ) {
+                    atValue - 1
+                } else {
+                    atValue
+                }
 
         val programName = getMediaItemName(programItems[at])
         if (programName.isNotBlank()) { // exclude bumpers
@@ -196,11 +209,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             editor.putInt(getPlaylistPlayKey(index), atValue)
             editor.putLong(getPlaylistSeekTo(index), seekTo)
             editor.putLong(getPlaylistLastModified(index), getLastModifiedFor(index))
-            editor.putString(getPlaylistLastPlayed(index),
-                dateFormat?.format(Calendar.getInstance().time)
+            editor.putString(
+                    getPlaylistLastPlayed(index),
+                    dateFormat?.format(Calendar.getInstance().time)
             )
             editor.apply() // Use apply instead of commit for asynchronous saving
-            Logger.log(AuditLog.Event.CACHE_NOW_PLAYING_RESUME, getPlayingAtIndexLabel(index), programName, "$at-$seekTo")
+            Logger.log(
+                    AuditLog.Event.CACHE_NOW_PLAYING_RESUME,
+                    getPlayingAtIndexLabel(index),
+                    programName,
+                    "$at-$seekTo"
+            )
         }
     }
 
@@ -227,12 +246,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return try {
             val lastPlayed = Calendar.getInstance()
             val today = Calendar.getInstance()
-            lastPlayed.time = ((sharedPreferences.getString(
-                getPlaylistLastPlayed(
-                    getPlaylistIndex(index)
-                ), now) ?: now)?.let {
-                dateFormat?.parse(it)
-            } ?: now) as Date // Fallback to `now` if the parsing fails or result is null
+            lastPlayed.time =
+                    ((sharedPreferences.getString(
+                                    getPlaylistLastPlayed(getPlaylistIndex(index)),
+                                    now
+                            )
+                                    ?: now)?.let { dateFormat?.parse(it) }
+                            ?: now) as
+                            Date // Fallback to `now` if the parsing fails or result is null
 
             today.time = (now?.let { dateFormat?.parse(it) } ?: now) as Date
             isRepeatable(repeat, lastPlayed, today)
@@ -242,7 +263,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-    private fun isRepeatable(repeat: Playlist.Repeat, lastPlayed: Calendar, today: Calendar): Boolean {
+    private fun isRepeatable(
+            repeat: Playlist.Repeat,
+            lastPlayed: Calendar,
+            today: Calendar
+    ): Boolean {
         when (repeat) {
             Playlist.Repeat.DAILY -> {
                 // maintain lastPlayed
@@ -282,17 +307,21 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         setContentView(R.layout.monitor)
 
         // HACK: Disable back press (Issue arises due to remote control by RustDesk)
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                // Do nothing (Prevents back navigation)
-            }
-        })
+        onBackPressedDispatcher.addCallback(
+                this,
+                object : OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() {
+                        // Do nothing (Prevents back navigation)
+                    }
+                }
+        )
 
         // handle any uncaught exception
         Thread.setDefaultUncaughtExceptionHandler(TelefynaUnCaughtExceptionHandler())
         if (intent.getBooleanExtra(TelefynaUnCaughtExceptionHandler.CRASH, false)) {
-            intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)
-                ?.let { Logger.log(AuditLog.Event.CRASH, it) }
+            intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)?.let {
+                Logger.log(AuditLog.Event.CRASH, it)
+            }
         }
 
         instance = this
@@ -302,7 +331,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         handler = Handler(Looper.getMainLooper())
         sharedPreferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
 
-        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+        )
 
         alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
         // allow network etc actions since telefyna depends on all of these
@@ -314,8 +346,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             registerReceiver(keepOnAirReceiver, filter, RECEIVER_NOT_EXPORTED)
             // Register a no-op predictive back callback to silence warning and keep back disabled
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
-                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT
-            ) { /* no-op to keep back disabled intentionally */ }
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT
+            ) { /* no-op to keep back disabled intentionally */}
         } else {
             registerReceiver(keepOnAirReceiver, filter)
         }
@@ -329,8 +361,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra(TelefynaUnCaughtExceptionHandler.CRASH, false)) {
-            intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)
-                ?.let { Logger.log(AuditLog.Event.CRASH, it) }
+            intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)?.let {
+                Logger.log(AuditLog.Event.CRASH, it)
+            }
         }
     }
 
@@ -341,14 +374,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 if (Environment.isExternalStorageManager()) {
                     proceedAfterPermissionsGranted()
                 } else {
-                    Toast.makeText(this, "Storage permission required to proceed", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                                    this,
+                                    "Storage permission required to proceed",
+                                    Toast.LENGTH_LONG
+                            )
+                            .show()
                 }
             }
         }
     }
 
     /**
-     * Returns the first location of app root directory on the system in precedence; external drive via usb, external sdcard, internal sdcard
+     * Returns the first location of app root directory on the system in precedence; external drive
+     * via usb, external sdcard, internal sdcard
      *
      * @return
      */
@@ -373,27 +412,27 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun getRestartFile(): File {
-        return File(getAuditFilePath(this,"restart.txt"))
+        return File(getAuditFilePath(this, "Restart.txt"))
     }
 
     private fun getRebootFile(): File {
-        return File(getAuditFilePath(this,"reboot.txt"))
+        return File(getAuditFilePath(this, "Reboot.txt"))
     }
 
     private fun getAuditConfigFile(): File {
-        return File(getAuditFilePath(this,"config.json"))
+        return File(getAuditFilePath(this, "config.json"))
     }
 
     private fun getBackupConfigFile(): File {
-        return File(getAuditFilePath(this,"backupConfig.txt"))
+        return File(getAuditFilePath(this, "backupConfig.txt"))
     }
 
     private fun getBackupConfigResetFile(): File {
-        return File(getAuditFilePath(this,"backupConfigReset.txt"))
+        return File(getAuditFilePath(this, "backupConfigReset.txt"))
     }
 
     private fun getReInitializerFile(): File {
-        return File(getAuditFilePath(this,"init.txt"))
+        return File(getAuditFilePath(this, "init.txt"))
     }
 
     private fun getBumperDirectory(useExternalStorage: Boolean): String {
@@ -439,7 +478,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun getAuditLogsFilePath(name: String): String {
-        return getAuditFilePath(this,"${name}${AuditLog.ENDPOINT}")
+        return getAuditFilePath(this, "${name}${AuditLog.ENDPOINT}")
     }
 
     fun initialise() {
@@ -461,7 +500,39 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 maintenance?.run()
             } else {
-                maintenance?.let { /* no-op on older APIs if run() requires O */ }
+                maintenance?.let { /* no-op on older APIs if run() requires O */}
+            }
+
+            // Initialize and start the FileObserver for init.txt (only if not already running)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && initFileObserver == null) {
+                // Get the audit directory directly
+                // Priority: Legacy path (/storage/emulated/0/telefynaAudit) -> Scoped path
+                // (Android/data/...)
+                val legacyPath = File(Environment.getExternalStorageDirectory(), "telefynaAudit")
+                val scopedPath = File(this.getExternalFilesDir(null), "telefynaAudit")
+
+                // On Android 10 (Q) and above, use legacy path if it exists or if we can access it
+                // We prefer legacy path because users manualy drop files there
+                val auditDirectory =
+                        if (legacyPath.exists() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                            legacyPath
+                        } else {
+                            scopedPath
+                        }
+
+                if (auditDirectory.exists() && auditDirectory.isDirectory) {
+                    initFileObserver = InitFileObserver(auditDirectory.absolutePath)
+                    initFileObserver?.startWatching()
+                    Logger.log(
+                            AuditLog.Event.FILE_OBSERVER,
+                            "InitFileObserver started successfully"
+                    )
+                } else {
+                    Logger.log(
+                            AuditLog.Event.ERROR,
+                            "Audit directory does not exist or is not a directory: ${auditDirectory.absolutePath}"
+                    )
+                }
             }
         } catch (e: Exception) {
             Logger.log(AuditLog.Event.ERROR, e.localizedMessage ?: "post-permission init error")
@@ -496,21 +567,21 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return player as ExoPlayer
     }
 
-    private fun addBumpers(bumpers: MutableList<MediaItem>, bumperFolder: File, addedFirstItem: Boolean) {
+    private fun addBumpers(
+            bumpers: MutableList<MediaItem>,
+            bumperFolder: File,
+            addedFirstItem: Boolean
+    ) {
         if (bumperFolder.exists() && bumperFolder.listFiles()?.isNotEmpty() == true) {
             currentPlaylist?.let {
-                Utils.setupLocalPrograms(bumpers, bumperFolder, addedFirstItem,
-                    it
-                )
+                Utils.setupLocalPrograms(bumpers, bumperFolder, addedFirstItem, it)
                 bumpers.reverse()
             }
         }
     }
 
     private fun getPlaylistIndex(index: Int): Int {
-        return index.let {
-            playlistByIndex[it].schedule ?: it
-        }
+        return index.let { playlistByIndex[it].schedule ?: it }
     }
 
     private fun samePlaylistPlaying(index: Int): Boolean {
@@ -518,7 +589,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             val current = getPlaylistIndex(now)
             val next = getPlaylistIndex(index)
             current == next
-        } ?: false
+        }
+                ?: false
     }
 
     private fun playTheSame(index: Int): Boolean {
@@ -532,15 +604,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // Use the static Gson instance to reduce object creation
         Logger.log(AuditLog.Event.PLAYLIST, getPlayingAtIndexLabel(index), gson.toJson(playlist))
 
-        // Re-maintain if init file exists; drop it and reload schedule
-        val reInitializerFile = getReInitializerFile()
-        if (reInitializerFile.exists()) {
-            reInitializerFile.delete()
-            maintenance?.run()
-            return
-        }
-
-        if (!samePlaylistPlaying(index) || playTheSame(index)) { // Leave current program to proceed if it's the same being loaded
+        if (!samePlaylistPlaying(index) || playTheSame(index)
+        ) { // Leave current program to proceed if it's the same being loaded
             // Setup objects; skip playlist with nothing to play
             nowPlayingIndex = index
             currentPlaylist = playlist
@@ -549,7 +614,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             val firstDefaultIndex = getFirstDefaultIndex()
             val secondDefaultIndex = getSecondDefaultIndex()
 
-            if (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() && secondDefaultIndex != nowPlayingIndex) {
+            if (currentPlaylist!!.type == Playlist.Type.ONLINE &&
+                            !Utils.internetConnected() &&
+                            secondDefaultIndex != nowPlayingIndex
+            ) {
                 (configuration?.wait)?.times(1000L)?.let {
                     handler?.removeCallbacksAndMessages(null) // Cleanup before scheduling delay
                     lifecycleScope.launch {
@@ -558,7 +626,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             try {
                                 switchNow(index, isCurrentSlot, context)
                             } catch (e: Exception) {
-                                e.message?.let { it1 -> Logger.log(AuditLog.Event.PLAYLIST_ERROR, it1) }
+                                e.message?.let { it1 ->
+                                    Logger.log(AuditLog.Event.PLAYLIST_ERROR, it1)
+                                }
                                 switchNow(getSecondDefaultIndex(), isCurrentSlot, context)
                             }
                         } else {
@@ -570,14 +640,26 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
             } else {
                 keepBroadcasting()
-                if (secondDefaultIndex == nowPlayingIndex && (currentPlaylist!!.type == Playlist.Type.ONLINE && !Utils.internetConnected() || currentPlaylist!!.type != Playlist.Type.ONLINE && programItems.isEmpty())) {
+                if (secondDefaultIndex == nowPlayingIndex &&
+                                (currentPlaylist!!.type == Playlist.Type.ONLINE &&
+                                        !Utils.internetConnected() ||
+                                        currentPlaylist!!.type != Playlist.Type.ONLINE &&
+                                                programItems.isEmpty())
+                ) {
                     Logger.log(AuditLog.Event.EMPTY_FILLERS)
                     switchNow(firstDefaultIndex, isCurrentSlot, context)
                     return
                 } else {
                     if (programItems.isEmpty()) {
-                        Logger.log(AuditLog.Event.PLAYLIST_EMPTY_PLAY, getPlayingAtIndexLabel(nowPlayingIndex))
-                        switchNow(currentPlaylist!!.emptyReplacer ?: firstDefaultIndex, isCurrentSlot, context)
+                        Logger.log(
+                                AuditLog.Event.PLAYLIST_EMPTY_PLAY,
+                                getPlayingAtIndexLabel(nowPlayingIndex)
+                        )
+                        switchNow(
+                                currentPlaylist!!.emptyReplacer ?: firstDefaultIndex,
+                                isCurrentSlot,
+                                context
+                        )
                         return
                     } else {
                         // Assign current player to previousPlayer before creating a new one
@@ -593,7 +675,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
                         if (modifiedOffset > 0) {
-                            Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
+                            Logger.log(
+                                    AuditLog.Event.PLAYLIST_MODIFIED,
+                                    getPlayingAtIndexLabel(nowPlayingIndex),
+                                    modifiedOffset / 1000
+                            )
                             resetTrackingNowPlaying(nowPlayingIndex!!)
                         }
 
@@ -604,26 +690,52 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         if (currentPlaylist!!.type != Playlist.Type.ONLINE) {
                             // Resume local resumable programs
                             if (currentPlaylist!!.isResuming()) {
-                                val previousProgram = getSharedPlaylistMediaItem(getPlaylistIndex(nowPlayingIndex!!))
-                                var previousSeekTo = getSharedPlaylistSeekTo(getPlaylistIndex(nowPlayingIndex!!))
-                                if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
-                                    nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
-                                        0
-                                    } else if (currentPlaylist!!.repeat?.let { canResume(nowPlayingIndex!!, it) } == true) {
-                                        previousProgram.plus(1)
-                                    } else {
-                                        previousProgram
-                                    }
+                                val previousProgram =
+                                        getSharedPlaylistMediaItem(
+                                                getPlaylistIndex(nowPlayingIndex!!)
+                                        )
+                                var previousSeekTo =
+                                        getSharedPlaylistSeekTo(getPlaylistIndex(nowPlayingIndex!!))
+                                if (nowProgramItem == 0 &&
+                                                (currentPlaylist!!.type ==
+                                                        Playlist.Type.LOCAL_RESUMING_NEXT ||
+                                                        currentPlaylist!!.type ==
+                                                                Playlist.Type.LOCAL_RESUMING_ONE)
+                                ) {
+                                    nowProgramItem =
+                                            if (previousProgram == -1 ||
+                                                            previousProgram ==
+                                                                    (programItems.size).minus(1)
+                                            ) {
+                                                0
+                                            } else if (currentPlaylist!!.repeat?.let {
+                                                        canResume(nowPlayingIndex!!, it)
+                                                    } == true
+                                            ) {
+                                                previousProgram.plus(1)
+                                            } else {
+                                                previousProgram
+                                            }
                                     previousSeekTo = 0
-                                } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_SAME) {
+                                } else if (currentPlaylist!!.type ==
+                                                Playlist.Type.LOCAL_RESUMING_SAME
+                                ) {
                                     nowProgramItem = previousProgram
                                     previousSeekTo = 0
                                 }
 
                                 currentPlaylist!!.name?.let {
-                                    nowProgramItem?.let { it1 -> programItems[it1] }?.let { it2 -> getMediaItemName(it2) }?.let { it3 ->
-                                        Logger.log(AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME, it, it3, previousSeekTo)
-                                    }
+                                    nowProgramItem
+                                            ?.let { it1 -> programItems[it1] }
+                                            ?.let { it2 -> getMediaItemName(it2) }
+                                            ?.let { it3 ->
+                                                Logger.log(
+                                                        AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME,
+                                                        it,
+                                                        it3,
+                                                        previousSeekTo
+                                                )
+                                            }
                                 }
                                 if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE) {
                                     val item = nowProgramItem?.let { programItems[it] }
@@ -634,10 +746,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                     startOnePlayProgramItem = nowProgramItem
                                     nowProgramItem = 0
                                 } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
-                                    nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
+                                    nowPosition =
+                                            if (nowPosition > 0) nowPosition else previousSeekTo
                                 }
                             } else {
-                                val bumperFolder = getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)
+                                val bumperFolder =
+                                        getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)
                                 val generalBumpersIntro = mutableListOf<MediaItem>()
                                 val generalBumpersOutro = mutableListOf<MediaItem>()
                                 val specialBumpersIntro = mutableListOf<MediaItem>()
@@ -646,27 +760,60 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 val playListOutroBumpers = mutableListOf<MediaItem>()
                                 // Prepare intro general bumpers
                                 if (currentPlaylist!!.isPlayingGeneralBumpers) {
-                                    addBumpers(generalBumpersIntro, File("$bumperFolder${File.separator}General-INTRO"), false)
-                                    addBumpers(generalBumpersOutro, File("$bumperFolder${File.separator}General-OUTRO"), false)
+                                    addBumpers(
+                                            generalBumpersIntro,
+                                            File("$bumperFolder${File.separator}General-INTRO"),
+                                            false
+                                    )
+                                    addBumpers(
+                                            generalBumpersOutro,
+                                            File("$bumperFolder${File.separator}General-OUTRO"),
+                                            false
+                                    )
                                 }
                                 val specialBumperFolder = currentPlaylist!!.specialBumperFolder
                                 if (!specialBumperFolder.isNullOrBlank()) {
-                                    addBumpers(specialBumpersIntro, File("$bumperFolder${File.separator}$specialBumperFolder-INTRO"), false)
-                                    addBumpers(specialBumpersOutro, File("$bumperFolder${File.separator}$specialBumperFolder-OUTRO"), false)
+                                    addBumpers(
+                                            specialBumpersIntro,
+                                            File(
+                                                    "$bumperFolder${File.separator}$specialBumperFolder-INTRO"
+                                            ),
+                                            false
+                                    )
+                                    addBumpers(
+                                            specialBumpersOutro,
+                                            File(
+                                                    "$bumperFolder${File.separator}$specialBumperFolder-OUTRO"
+                                            ),
+                                            false
+                                    )
                                 }
 
                                 // Prepare playlist specific bumpers
-                                addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
-                                    ?.get(0)}-INTRO"), false)
-                                addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
-                                    ?.get(0)}-OUTRO"), false)
+                                addBumpers(
+                                        playListIntroBumpers,
+                                        File(
+                                                "$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
+                                    ?.get(0)}-INTRO"
+                                        ),
+                                        false
+                                )
+                                addBumpers(
+                                        playListOutroBumpers,
+                                        File(
+                                                "$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
+                                    ?.get(0)}-OUTRO"
+                                        ),
+                                        false
+                                )
 
                                 // Add intro bumpers
-                                val currentBumpers = mutableListOf<MediaItem>().apply {
-                                    addAll(generalBumpersIntro)
-                                    addAll(playListIntroBumpers)
-                                    addAll(specialBumpersIntro)
-                                }
+                                val currentBumpers =
+                                        mutableListOf<MediaItem>().apply {
+                                            addAll(generalBumpersIntro)
+                                            addAll(playListIntroBumpers)
+                                            addAll(specialBumpersIntro)
+                                        }
 
                                 programItems.addAll(0, currentBumpers)
 
@@ -676,13 +823,27 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 programItems.addAll(generalBumpersOutro)
                             }
 
-                            if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
-                                val seek = seekImmediateNonCompletedSlot(currentPlaylist!!, programItems)
+                            if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex
+                            ) { // Not fillers
+                                val seek =
+                                        seekImmediateNonCompletedSlot(
+                                                currentPlaylist!!,
+                                                programItems
+                                        )
                                 if (seek != null) {
-                                    nowProgramItem = if (seek.program == (programItems.size).minus(1)) seek.program else nowProgramItem?.plus(seek.program)
-                                    nowPosition = if (seek.program == (programItems.size).minus(1)) seek.position else nowProgramItem?.plus(seek.position)!!
+                                    nowProgramItem =
+                                            if (seek.program == (programItems.size).minus(1))
+                                                    seek.program
+                                            else nowProgramItem?.plus(seek.program)
+                                    nowPosition =
+                                            if (seek.program == (programItems.size).minus(1))
+                                                    seek.position
+                                            else nowProgramItem?.plus(seek.position)!!
                                 } else { // Slot is ended, switch to fillers
-                                    Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getPlayingAtIndexLabel(nowPlayingIndex))
+                                    Logger.log(
+                                            AuditLog.Event.PLAYLIST_COMPLETED,
+                                            getPlayingAtIndexLabel(nowPlayingIndex)
+                                    )
                                     switchNow(secondDefaultIndex, false, context)
                                     return
                                 }
@@ -698,24 +859,31 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         // Fade-in for new player (if desired, otherwise skip)
                         if (!currentPlaylist!!.isResuming()) {
                             player!!.volume = 0f
-                            val fadeInAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                                duration = CROSS_FADE_DURATION
-                                addUpdateListener { player!!.volume = it.animatedValue as Float }
-                            }
+                            val fadeInAnimator =
+                                    ValueAnimator.ofFloat(0f, 1f).apply {
+                                        duration = CROSS_FADE_DURATION
+                                        addUpdateListener {
+                                            player!!.volume = it.animatedValue as Float
+                                        }
+                                    }
                             fadeInAnimator.start()
                             Logger.log(AuditLog.Event.FADE_PLAYED, "fade in transition played")
                         }
                         player!!.playWhenReady = true
                         playerView.player = player // Explicitly attach new player to PlayerView
                         player!!.addListener(this) // Add listener once
-                        nowProgramItem?.let { programItems[it] }?.let { getMediaItemName(it) }?.let {
-                            Logger.log(
-                                if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
-                                getNowPlayingPlaylistLabel(),
-                                Utils.formatDuration(nowPosition),
-                                it
-                            )
-                        }
+                        nowProgramItem
+                                ?.let { programItems[it] }
+                                ?.let { getMediaItemName(it) }
+                                ?.let {
+                                    Logger.log(
+                                            if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY
+                                            else AuditLog.Event.PLAYLIST_SWITCH,
+                                            getNowPlayingPlaylistLabel(),
+                                            Utils.formatDuration(nowPosition),
+                                            it
+                                    )
+                                }
                         // Log now playing
                         cacheNowPlaying(false)
                         triggerGraphics(nowPosition)
@@ -736,7 +904,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 break
             }
         }
-        if (previousPlayer != null && previousPlayer != current) { // Switching too fast, consider on in view
+        if (previousPlayer != null && previousPlayer != current
+        ) { // Switching too fast, consider on in view
             endPlayerSafely(previousPlayer)
         }
     }
@@ -746,10 +915,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         var mediaPlayer: MediaPlayer? = null
         var duration: Long = 0
         try {
-            mediaPlayer = MediaPlayer().apply {
-                instance?.let { setDataSource(it, Uri.parse(path)) }
-                prepare()
-            }
+            mediaPlayer =
+                    MediaPlayer().apply {
+                        instance?.let { setDataSource(it, Uri.parse(path)) }
+                        prepare()
+                    }
             duration = mediaPlayer.duration.toLong()
         } catch (e: Exception) {
             Logger.log(AuditLog.Event.ERROR, e.message ?: "Unknown error")
@@ -759,7 +929,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return duration
     }
 
-    private fun seekImmediateNonCompletedSlot(playlist: Playlist, mediaItems: List<MediaItem>): Seek? {
+    private fun seekImmediateNonCompletedSlot(
+            playlist: Playlist,
+            mediaItems: List<MediaItem>
+    ): Seek? {
         val start = playlist.getStartTime()
         if (start != null) {
             val startTime = start.timeInMillis
@@ -791,18 +964,21 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             when (state) {
                 Player.STATE_ENDED -> {
                     val playlist = playlistByIndex[it]
-                    val isFiniteType = playlist.type == Playlist.Type.LOCAL_SEQUENCED ||
-                            playlist.type == Playlist.Type.LOCAL_RANDOMIZED
+                    val isFiniteType =
+                            playlist.type == Playlist.Type.LOCAL_SEQUENCED ||
+                                    playlist.type == Playlist.Type.LOCAL_RANDOMIZED
                     val isAtLastItem = player?.currentMediaItemIndex == (programItems.size - 1)
 
                     // Only switch to fillers when a truly finite playlist finishes
                     if (isFiniteType && isAtLastItem) {
-                        Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, "Playlist fully finished, switching to filler")
+                        Logger.log(
+                                AuditLog.Event.PLAYLIST_COMPLETED,
+                                "Playlist fully finished, switching to filler"
+                        )
                         switchNow(getSecondDefaultIndex(), false, this)
                         return
                     }
                 }
-
                 Player.STATE_BUFFERING -> {
                     if (currentPlaylist?.type == Playlist.Type.ONLINE) {
                         player?.seekTo(player!!.contentDuration) // hack
@@ -825,17 +1001,19 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         nowPlayingIndex?.let {
-            val isFiniteType = currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
-                    currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED
+            val isFiniteType =
+                    currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
+                            currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED
 
             // ✅ We are *about to* play the final item — don't switch yet
-            val aboutToPlayLast = nowProgramItem != null && nowProgramItem!! == programItems.size - 1
-            val playlistName =  getNowPlayingPlaylistLabel()
+            val aboutToPlayLast =
+                    nowProgramItem != null && nowProgramItem!! == programItems.size - 1
+            val playlistName = getNowPlayingPlaylistLabel()
 
             if (isFiniteType && aboutToPlayLast) {
                 Logger.log(
-                    AuditLog.Event.PLAYLIST_LAST_ITEM,
-                    "$playlistName — waiting for STATE_ENDED to switch"
+                        AuditLog.Event.PLAYLIST_LAST_ITEM,
+                        "$playlistName — waiting for STATE_ENDED to switch"
                 )
             }
 
@@ -848,9 +1026,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
             mediaItem?.let { item ->
                 Logger.log(
-                    AuditLog.Event.PLAYLIST_ITEM_CHANGE,
-                    getNowPlayingPlaylistLabel(),
-                    getMediaItemName(item)
+                        AuditLog.Event.PLAYLIST_ITEM_CHANGE,
+                        getNowPlayingPlaylistLabel(),
+                        getMediaItemName(item)
                 )
                 triggerRepeatWatermark(item)
             }
@@ -864,18 +1042,25 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         val currentItem = player?.currentMediaItem
         val filePath = currentItem?.localConfiguration?.uri?.path
 
-        /** this only works if
-         * A file gets deleted or unmounted during playback (e.g. USB drive ejected, SD card removed).
-         * The playlist was valid at prepare() time, but the file vanishes after playback starts.
+        /**
+         * this only works if A file gets deleted or unmounted during playback (e.g. USB drive
+         * ejected, SD card removed). The playlist was valid at prepare() time, but the file
+         * vanishes after playback starts.
          */
         if (!filePath.isNullOrEmpty() && !File(filePath).exists()) {
             if (currentPlaylist?.type == Playlist.Type.ONLINE) {
-                Logger.log(AuditLog.Event.ERROR, "ONLINE resource unavailable (path missing in local FS for stream): $filePath — switching to filler.")
+                Logger.log(
+                        AuditLog.Event.ERROR,
+                        "ONLINE resource unavailable (path missing in local FS for stream): $filePath — switching to filler."
+                )
                 failedBecauseOfInternetIndex = nowPlayingIndex
                 fillingForLackOfInternet = true
                 switchNow(getSecondDefaultIndex(), false, this)
             } else {
-                Logger.log(AuditLog.Event.ERROR, "Missing local file detected: $filePath — switching to filler.")
+                Logger.log(
+                        AuditLog.Event.ERROR,
+                        "Missing local file detected: $filePath — switching to filler."
+                )
                 switchNow(getSecondDefaultIndex(), false, this)
             }
             return
@@ -887,7 +1072,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // keep reloading existing program if internet is on and off
         when (error.cause?.cause) {
             is UnknownHostException, is IOException -> {
-                Logger.log(AuditLog.Event.NO_INTERNET, "Failing to play program because of no internet connection")
+                Logger.log(
+                        AuditLog.Event.NO_INTERNET,
+                        "Failing to play program because of no internet connection"
+                )
                 failedBecauseOfInternetIndex = nowPlayingIndex
                 fillingForLackOfInternet = true
                 // this will wait for set time on config before reloading
@@ -899,19 +1087,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             }
             is MediaCodecRenderer.DecoderInitializationException -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
+                    nowPlayingIndex?.let { switchNow(it, false, this) } // Added context parameter
                 }
             }
             else -> {
                 if (!player?.isPlaying!!) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
+                        nowPlayingIndex?.let {
+                            switchNow(it, false, this)
+                        } // Added context parameter
                     }
                 }
             }
         }
     }
-
 
     private fun getPlayingAtIndexLabel(index: Int?): String {
         val playlistName = playlistByIndex[index?.let { getPlaylistIndex(it) }!!].name
@@ -923,7 +1112,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return "$playlistName #$nowPlayingIndex"
     }
 
-    override fun onNotificationPosted(notificationId: Int, notification: Notification, ongoing: Boolean) {
+    override fun onNotificationPosted(
+            notificationId: Int,
+            notification: Notification,
+            ongoing: Boolean
+    ) {
         if (configuration?.isNotificationsDisabled == true) {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(notificationId)
         }
@@ -933,7 +1126,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (player == null) return
         try {
             // Detach from UI if this is the currently attached player
-            val view = try { getPlayerView(false) } catch (_: Exception) { null }
+            val view =
+                    try {
+                        getPlayerView(false)
+                    } catch (_: Exception) {
+                        null
+                    }
             if (player === view?.player) {
                 view.player = null
             }
@@ -955,7 +1153,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-
     private fun shutDownHook() {
         Logger.log(AuditLog.Event.HEARTBEAT, "OFF")
     }
@@ -968,7 +1165,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         try {
             val pv = getPlayerView(false)
             pv.player = null
-        } catch (_: Exception) { }
+        } catch (_: Exception) {}
 
         // End players safely
         endPlayerSafely(player)
@@ -983,18 +1180,25 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         maintenanceHandler = null
         handler = null
 
+        // Stop the FileObserver
+        initFileObserver?.stopWatching()
+        initFileObserver = null
+
         // Unregister receiver and cancel alarm safely
         if (isKeepOnAirRegistered) {
             try {
                 unregisterReceiver(keepOnAirReceiver)
-            } catch (_: IllegalArgumentException) { }
+            } catch (_: IllegalArgumentException) {}
             isKeepOnAirRegistered = false
         }
         val intent = Intent(KEEP_ON_AIR_ACTION)
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingIntent =
+                PendingIntent.getBroadcast(
+                        this,
+                        0,
+                        intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
         alarmManager?.cancel(pendingIntent)
 
         // Aggressive memory trim for TV boxes
@@ -1015,9 +1219,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun getDirectoryFromPlaylist(playlist: Playlist, i: Int): File {
-        return File(getPlaylistDirectory(playlist.isUsingExternalStorage) + File.separator + (playlist.urlOrFolder?.split("#")
-            ?.get(i)
-            ?.trim()))
+        return File(
+                getPlaylistDirectory(playlist.isUsingExternalStorage) +
+                        File.separator +
+                        (playlist.urlOrFolder?.split("#")?.get(i)?.trim())
+        )
     }
 
     private fun getDirectoryFromPlaylist(playlist: Playlist): File {
@@ -1039,19 +1245,31 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun askForPermissions(permissions: List<String>) {
         instance?.let {
             if (permissions.isNotEmpty()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && permissions.contains(Manifest.permission.MANAGE_EXTERNAL_STORAGE)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                                permissions.contains(Manifest.permission.MANAGE_EXTERNAL_STORAGE)
+                ) {
                     // Redirect to system settings for `MANAGE_EXTERNAL_STORAGE`
                     val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                     intent.data = Uri.fromParts("package", it.packageName, null)
                     if (intent.resolveActivity(it.packageManager) != null) {
                         it.startActivityForResult(intent, MANAGE_STORAGE_REQUEST_CODE)
                     } else {
-                        //TODO: Incase no permissions show a screen like no permission (this prevents the restart due to permission failing)
-                        Toast.makeText(it, "Unable to open settings for file access permission", Toast.LENGTH_LONG).show()
+                        // TODO: Incase no permissions show a screen like no permission (this
+                        // prevents the restart due to permission failing)
+                        Toast.makeText(
+                                        it,
+                                        "Unable to open settings for file access permission",
+                                        Toast.LENGTH_LONG
+                                )
+                                .show()
                     }
                 } else {
                     // Request permissions normally
-                    ActivityCompat.requestPermissions(it, permissions.toTypedArray(), PERMISSION_REQUEST_CODE)
+                    ActivityCompat.requestPermissions(
+                            it,
+                            permissions.toTypedArray(),
+                            PERMISSION_REQUEST_CODE
+                    )
                 }
             }
         }
@@ -1080,19 +1298,16 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         // Filter missing permissions
         return requiredPermissions.filter {
-            instance?.let { ctx ->
-                ContextCompat.checkSelfPermission(ctx, it)
-            } != PackageManager.PERMISSION_GRANTED
+            instance?.let { ctx -> ContextCompat.checkSelfPermission(ctx, it) } !=
+                    PackageManager.PERMISSION_GRANTED
         }
     }
 
-    /**
-     * Handle the result of the permission requests.
-     */
+    /** Handle the result of the permission requests. */
     override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
+            requestCode: Int,
+            permissions: Array<out String>,
+            grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
@@ -1123,7 +1338,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
-            Logger.log(AuditLog.Event.KEY_PRESS, "${KeyEvent.keyCodeToString(event.keyCode)}#${event.keyCode}")
+            Logger.log(
+                    AuditLog.Event.KEY_PRESS,
+                    "${KeyEvent.keyCodeToString(event.keyCode)}#${event.keyCode}"
+            )
         }
         return super.dispatchKeyEvent(event)
     }
@@ -1135,18 +1353,19 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (::tickerRecyclerView.isInitialized) {
             hideTicker()
         }
-        hideWatermark(); //hide watermark after program completed
+        hideWatermark() // hide watermark after program completed
         hideLowerThird()
         val graphics = currentPlaylist?.graphics
         graphics?.let {
             // handle live logo display
-            if(it.displayLiveLogo) {
-                showLiveLogo(graphics.logoPosition);
+            if (it.displayLiveLogo) {
+                showLiveLogo(graphics.logoPosition)
             }
             // handle repeat Watermark display
-            if(it.displayRepeatWatermark) {
-                nowProgramItem?.let { it1 -> programItems[it1] }
-                    ?.let { it2 -> triggerRepeatWatermark(it2) };
+            if (it.displayRepeatWatermark) {
+                nowProgramItem?.let { it1 -> programItems[it1] }?.let { it2 ->
+                    triggerRepeatWatermark(it2)
+                }
             }
 
             // Handle logo
@@ -1206,7 +1425,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun hideLowerThird() {
         lowerThirdView?.let {
             if (it.visibility != View.GONE) {
-                // TODO lowerThirdView.animate().translationX(lowerThirdView.width); etc should be in the clip
+                // TODO lowerThirdView.animate().translationX(lowerThirdView.width); etc should be
+                // in the clip
                 it.visibility = View.GONE
                 Logger.log(AuditLog.Event.LOWER_THIRD_OFF)
             }
@@ -1232,7 +1452,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         try {
             val tv: TextView = rv.findViewById(R.id.tickerText)
             tv.isSelected = visible
-        } catch (_: Exception) { }
+        } catch (_: Exception) {}
         if (visible) {
             // Log on
             Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, "[DEBUG_LOG] ticker visible ON")
@@ -1280,7 +1500,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun showLowerThird(lowerThird: LowerThird) {
-        val path = currentPlaylist?.let { getLowerThirdDirectory(it.isUsingExternalStorage) } + File.separator + lowerThird.file
+        val path =
+                currentPlaylist?.let { getLowerThirdDirectory(it.isUsingExternalStorage) } +
+                        File.separator +
+                        lowerThird.file
         val lowerThirdClip = File(path)
 
         if (Utils.validPlayableItem(lowerThirdClip)) {
@@ -1312,16 +1535,16 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // Initialize the RecyclerView once and reuse adapter for updates
         if (!::tickerRecyclerView.isInitialized) {
             tickerRecyclerView = findViewById(R.id.tickerRecyclerView)
-            tickerRecyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+            tickerRecyclerView.layoutManager =
+                    LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         }
-        val tickerItems = listOf(
-            TickerItem(text = news.messages, time = news.showTime)
-        )
+        val tickerItems = listOf(TickerItem(text = news.messages, time = news.showTime))
         if (!::tickerAdapter.isInitialized) {
-            tickerAdapter = TickerAdapter(
-                tickerItems,
-                displacement = news.speed.getDisplacement(),
-            )
+            tickerAdapter =
+                    TickerAdapter(
+                            tickerItems,
+                            displacement = news.speed.getDisplacement(),
+                    )
             tickerRecyclerView.adapter = tickerAdapter
         } else {
             tickerAdapter.update(tickerItems)
@@ -1329,11 +1552,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun showRepeatProgramWatermark() {
-        val watermarkFolder = currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
+        val watermarkFolder =
+                currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
         // Check for different possible file extensions
-        val watermarkFile = possibleExtensions
-            .map { File("$watermarkFolder${File.separator}repeat.$it") }
-            .firstOrNull { it.exists() } // Get the first valid file
+        val watermarkFile =
+                possibleExtensions
+                        .map { File("$watermarkFolder${File.separator}repeat.$it") }
+                        .firstOrNull { it.exists() } // Get the first valid file
 
         if (watermarkFile?.exists() == true) {
             val watermarkView: ImageView = findViewById(R.id.watermark)
@@ -1343,58 +1568,67 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
             // Use Glide to load and display the image
             Glide.with(watermarkView.context)
-                .asDrawable() // allows gifs and static images
-                .load(watermarkFile)
-                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
-                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
-                .into(watermarkView)
+                    .asDrawable() // allows gifs and static images
+                    .load(watermarkFile)
+                    .diskCacheStrategy(
+                            DiskCacheStrategy.ALL
+                    ) // Cache in memory & disk for faster loads
+                    .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
+                    .into(watermarkView)
             watermarkView.visibility = View.VISIBLE
             Logger.log(AuditLog.Event.DISPLAY_REPEAT_PROGRAM_WATERMARK_ON)
         }
     }
 
     private fun showLiveLogo(logoPosition: Graphics.LogoPosition?) {
-        val watermarkFolder = currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
+        val watermarkFolder =
+                currentPlaylist?.let { getWatermarkDirectory(it.usingExternalStorage) }
         // Check for different possible file extensions
-        val logoFile = possibleExtensions
-            .map { File("$watermarkFolder${File.separator}live.$it") }
-            .firstOrNull { it.exists() } // Get the first valid file
+        val logoFile =
+                possibleExtensions
+                        .map { File("$watermarkFolder${File.separator}live.$it") }
+                        .firstOrNull { it.exists() } // Get the first valid file
 
         if (logoFile?.exists() == true && logoPosition != null) {
-            val logoView: ImageView = if (Graphics.LogoPosition.TOP == logoPosition) {
-                findViewById<ImageView>(R.id.topLogo).apply {
-                    Logger.log(AuditLog.Event.DISPLAY_LIVE_LOGO_ON, Graphics.LogoPosition.TOP.name)
-                }
-            } else {
-                findViewById<ImageView>(R.id.bottomLogo).apply {
-                    Logger.log(AuditLog.Event.DISPLAY_LIVE_LOGO_ON, Graphics.LogoPosition.BOTTOM.name)
-                }
-            }
+            val logoView: ImageView =
+                    if (Graphics.LogoPosition.TOP == logoPosition) {
+                        findViewById<ImageView>(R.id.topLogo).apply {
+                            Logger.log(
+                                    AuditLog.Event.DISPLAY_LIVE_LOGO_ON,
+                                    Graphics.LogoPosition.TOP.name
+                            )
+                        }
+                    } else {
+                        findViewById<ImageView>(R.id.bottomLogo).apply {
+                            Logger.log(
+                                    AuditLog.Event.DISPLAY_LIVE_LOGO_ON,
+                                    Graphics.LogoPosition.BOTTOM.name
+                            )
+                        }
+                    }
 
             // Clear previous image to prevent memory leaks
             Glide.with(logoView.context).clear(logoView)
 
             // Use Glide to load and display the image
             Glide.with(logoView.context)
-                .asDrawable() // allows gifs and static images
-                .load(logoFile)
-                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
-                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
-                .into(logoView)
+                    .asDrawable() // allows gifs and static images
+                    .load(logoFile)
+                    .diskCacheStrategy(
+                            DiskCacheStrategy.ALL
+                    ) // Cache in memory & disk for faster loads
+                    .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
+                    .into(logoView)
 
             logoView.visibility = View.VISIBLE
         }
     }
 
-     private fun showTicker(news: News) {
-         news.messages?.let {
-             Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, it)
-         }
-         news.starts.let {
-             Logger.log(AuditLog.Event.DISPLAY_TIME_ON, it)
-         }
+    private fun showTicker(news: News) {
+        news.messages?.let { Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, it) }
+        news.starts.let { Logger.log(AuditLog.Event.DISPLAY_TIME_ON, it) }
 
-         fadeInRecyclerView(tickerRecyclerView)
+        fadeInRecyclerView(tickerRecyclerView)
     }
 
     private fun fadeInRecyclerView(recyclerView: RecyclerView) {
@@ -1403,31 +1637,41 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     private fun showLogo(logoPosition: Graphics.LogoPosition?) {
         val logoFolder = getProgramsFolderPath(false)
-        val logoFile = possibleExtensions
-            .map { File("${logoFolder}${File.separator}logo.$it") }
-            .firstOrNull { it.exists() } // Get the first valid file
+        val logoFile =
+                possibleExtensions
+                        .map { File("${logoFolder}${File.separator}logo.$it") }
+                        .firstOrNull { it.exists() } // Get the first valid file
         if (logoFile?.exists() == true && logoPosition != null) {
-            val logoView: ImageView = when (logoPosition) {
-                Graphics.LogoPosition.TOP -> {
-                    Logger.log(AuditLog.Event.DISPLAY_LOGO_ON, Graphics.LogoPosition.TOP.name)
-                    findViewById(R.id.topLogo)
-                }
-                else -> {
-                    Logger.log(AuditLog.Event.DISPLAY_LOGO_ON, Graphics.LogoPosition.BOTTOM.name)
-                    findViewById(R.id.bottomLogo)
-                }
-            }
+            val logoView: ImageView =
+                    when (logoPosition) {
+                        Graphics.LogoPosition.TOP -> {
+                            Logger.log(
+                                    AuditLog.Event.DISPLAY_LOGO_ON,
+                                    Graphics.LogoPosition.TOP.name
+                            )
+                            findViewById(R.id.topLogo)
+                        }
+                        else -> {
+                            Logger.log(
+                                    AuditLog.Event.DISPLAY_LOGO_ON,
+                                    Graphics.LogoPosition.BOTTOM.name
+                            )
+                            findViewById(R.id.bottomLogo)
+                        }
+                    }
 
             // Clear previous image to prevent memory leaks
             Glide.with(logoView.context).clear(logoView)
 
             // Use Glide to load and display the image
             Glide.with(logoView.context)
-                .asDrawable() // allows gifs and static images
-                .load(logoFile)
-                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
-                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
-                .into(logoView)
+                    .asDrawable() // allows gifs and static images
+                    .load(logoFile)
+                    .diskCacheStrategy(
+                            DiskCacheStrategy.ALL
+                    ) // Cache in memory & disk for faster loads
+                    .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
+                    .into(logoView)
             logoView.visibility = View.VISIBLE
         }
     }
@@ -1439,7 +1683,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             for (i in playlists.indices) {
                 val playlist = playlists[i]
                 if (playlist.isResuming()) {
-                    playlist.seekTo = if (resetSeekTo) Seek(0, 0) else Seek(getSharedPlaylistMediaItem(i), getSharedPlaylistSeekTo(i))
+                    playlist.seekTo =
+                            if (resetSeekTo) Seek(0, 0)
+                            else Seek(getSharedPlaylistMediaItem(i), getSharedPlaylistSeekTo(i))
                     playlists[i] = playlist
                 }
             }
@@ -1452,23 +1698,24 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun keepBroadcasting() {
-        nowPlayingIndex?.let {
-            scheduleKeepOnAir()
-        }
+        nowPlayingIndex?.let { scheduleKeepOnAir() }
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun scheduleKeepOnAir() {
         val delay = (configuration?.wait ?: 30) * 1000L // Default to 30 seconds if null
         val intent = Intent("org.avventomedia.app.telefyna.KEEP_ON_AIR")
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingIntent =
+                PendingIntent.getBroadcast(
+                        this,
+                        0,
+                        intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
         alarmManager?.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + delay,
-            pendingIntent
+                AlarmManager.RTC_WAKEUP,
+                System.currentTimeMillis() + delay,
+                pendingIntent
         )
     }
 
@@ -1476,19 +1723,49 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun keepOnAir() {
         val delay = (configuration?.wait)?.times(1000L)
         when {
-            getRebootFile().exists() -> {
-                getRebootFile().delete()
-                rebootDevice()
-            }
-            getRestartFile().exists() -> {
-                getRestartFile().delete()
-                restartApp()
-            }
             else -> {
+                // Polling fallback for FileObserver (in case it fails on real devices)
+                // Check for init.txt
+                val initFile = File(getAuditFilePath(this, "init.txt"))
+                if (initFile.exists()) {
+                    initFile.delete()
+                    Logger.log(
+                            AuditLog.Event.FILE_OBSERVER,
+                            "init.txt detected via polling fallback, triggering schedule reload"
+                    )
+                    val configFile = File(getConfigFile())
+                    if (configFile.exists() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        maintenance?.run()
+                    }
+                }
+
+                // Check for Restart.txt
+                if (getRestartFile().exists()) {
+                    getRestartFile().delete()
+                    Logger.log(
+                            AuditLog.Event.FILE_OBSERVER,
+                            "Restart.txt detected via polling fallback, initiating app restart"
+                    )
+                    restartApp()
+                }
+
+                // Check for Reboot.txt
+                if (getRebootFile().exists()) {
+                    getRebootFile().delete()
+                    Logger.log(
+                            AuditLog.Event.FILE_OBSERVER,
+                            "Reboot.txt detected via polling fallback, initiating device reboot"
+                    )
+                    rebootDevice()
+                }
+
                 if (getBackupConfigFile().exists()) backupConfig(false)
                 if (getBackupConfigResetFile().exists()) backupConfig(true)
 
-                if (nowPlayingIndex == getSecondDefaultIndex() && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
+                if (nowPlayingIndex == getSecondDefaultIndex() &&
+                                Utils.internetConnected() &&
+                                failedBecauseOfInternetIndex != null
+                ) {
                     fillingForLackOfInternet = false
                     Logger.log(AuditLog.Event.INTERNET_RESTORED)
                     switchNow(failedBecauseOfInternetIndex!!, false, this)
@@ -1519,7 +1796,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-    private fun rebootDevice() {
+    fun rebootDevice() {
         try {
             Runtime.getRuntime().exec("su -c reboot")
         } catch (e: IOException) {
@@ -1536,6 +1813,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         exitProcess(2)
     }
 
+    fun stopCurrentPlayer() {
+        player?.let { currentPlayer ->
+            if (currentPlayer.isPlaying) {
+                currentPlayer.stop()
+            }
+            currentPlayer.clearMediaItems()
+        }
+    }
+
     private fun backupConfig(resetSeekTo: Boolean) {
         if (resetSeekTo) {
             getBackupConfigResetFile().delete()
@@ -1547,7 +1833,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         try {
             Logger.log(AuditLog.Event.BACK_UP)
             FileWriter(getAuditConfigFile(), false).use { writer ->
-                GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create().toJson(config, writer)
+                GsonBuilder()
+                        .disableHtmlEscaping()
+                        .setPrettyPrinting()
+                        .create()
+                        .toJson(config, writer)
             }
         } catch (e: IOException) {
             e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }
@@ -1558,21 +1848,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         @RequiresApi(Build.VERSION_CODES.O)
         override fun onReceive(context: Context, intent: Intent) {
             when {
-                getRebootFile().exists() -> {
-                    getRebootFile().delete()
-                    rebootDevice()
-                }
-                getRestartFile().exists() -> {
-                    getRestartFile().delete()
-                    restartApp()
-                }
                 else -> {
                     if (getBackupConfigFile().exists()) backupConfig(false)
                     if (getBackupConfigResetFile().exists()) backupConfig(true)
 
                     if (nowPlayingIndex == getSecondDefaultIndex() &&
-                        Utils.internetConnected() &&
-                        failedBecauseOfInternetIndex != null) {
+                                    Utils.internetConnected() &&
+                                    failedBecauseOfInternetIndex != null
+                    ) {
                         fillingForLackOfInternet = false
                         Logger.log(AuditLog.Event.INTERNET_RESTORED)
                         switchNow(failedBecauseOfInternetIndex!!, false, this@Monitor)
