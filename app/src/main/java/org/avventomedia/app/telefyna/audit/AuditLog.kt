@@ -55,6 +55,7 @@ class AuditLog {
 
         // system
         EMAIL("Sending email: '%s' to: %s %s"),
+        SYSTEM_ERROR("%s"),
         NO_INTERNET("%s");
 
         fun formatMessage(): String {
@@ -67,15 +68,15 @@ class AuditLog {
                 METRICS, ERROR, CACHE_NOW_PLAYING_RESUME, RETRIEVE_NOW_PLAYING_RESUME,
                 STUCK, INTERNET_RESTORED, EMPTY_FILLERS, CRASH, BACK_UP,
                 RESTARTING, TIME_CHANGED, FILE_OBSERVER
-            )
+                    )
             val schedulers = arrayOf(
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,
                 PLAYLIST_EMPTY_PLAY, PLAYLIST_MODIFIED, PLAYLIST_ITEM_CHANGE,
                 PLAYLIST_COMPLETED, PLAYLIST_ERROR, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
                 DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
                 DISPLAY_PROGRAM_WATERMARK_OFF, DISPLAY_LIVE_LOGO_ON,
-                DISPLAY_REPEAT_PROGRAM_WATERMARK_ON
-            )
+                            DISPLAY_REPEAT_PROGRAM_WATERMARK_ON
+                    )
 
             return when {
                 admins.contains(this) -> Category.ADMIN

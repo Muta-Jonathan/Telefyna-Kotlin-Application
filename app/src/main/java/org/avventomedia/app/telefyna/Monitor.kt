@@ -65,6 +65,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.system.exitProcess
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.apache.commons.lang3.StringUtils
@@ -138,6 +139,8 @@ class Monitor :
 
     private var lowerThirdLoop = 1
     private var offAir = false
+    private var graphicsJobs = mutableListOf<Job>()
+    private var keepAliveJob: Job? = null
     private var fillingForLackOfInternet = false
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
@@ -606,6 +609,11 @@ class Monitor :
 
         if (!samePlaylistPlaying(index) || playTheSame(index)
         ) { // Leave current program to proceed if it's the same being loaded
+            // Cancel all pending jobs to prevent memory leaks and overlapping tasks
+            graphicsJobs.forEach { it.cancel() }
+            graphicsJobs.clear()
+            keepAliveJob?.cancel()
+
             // Setup objects; skip playlist with nothing to play
             nowPlayingIndex = index
             currentPlaylist = playlist
@@ -620,23 +628,25 @@ class Monitor :
             ) {
                 (configuration?.wait)?.times(1000L)?.let {
                     handler?.removeCallbacksAndMessages(null) // Cleanup before scheduling delay
-                    lifecycleScope.launch {
-                        delay(it)
-                        if (Utils.internetConnected()) {
-                            try {
-                                switchNow(index, isCurrentSlot, context)
-                            } catch (e: Exception) {
-                                e.message?.let { it1 ->
-                                    Logger.log(AuditLog.Event.PLAYLIST_ERROR, it1)
+                    keepAliveJob?.cancel() // Cancel previous job before recreating
+                    keepAliveJob =
+                            lifecycleScope.launch {
+                                delay(it)
+                                if (Utils.internetConnected()) {
+                                    try {
+                                        switchNow(index, isCurrentSlot, context)
+                                    } catch (e: Exception) {
+                                        e.message?.let { it1 ->
+                                            Logger.log(AuditLog.Event.PLAYLIST_ERROR, it1)
+                                        }
+                                        switchNow(getSecondDefaultIndex(), isCurrentSlot, context)
+                                    }
+                                } else {
+                                    fillingForLackOfInternet = true
+                                    failedBecauseOfInternetIndex = nowPlayingIndex
+                                    switchNow(getSecondDefaultIndex(), isCurrentSlot, context)
                                 }
-                                switchNow(getSecondDefaultIndex(), isCurrentSlot, context)
                             }
-                        } else {
-                            fillingForLackOfInternet = true
-                            failedBecauseOfInternetIndex = nowPlayingIndex
-                            switchNow(getSecondDefaultIndex(), isCurrentSlot, context)
-                        }
-                    }
                 }
             } else {
                 keepBroadcasting()
@@ -662,15 +672,12 @@ class Monitor :
                         )
                         return
                     } else {
-                        // Assign current player to previousPlayer before creating a new one
-                        previousPlayer = player
-
-                        // Immediately release previous player
-                        if (previousPlayer != null) {
-                            endPlayerSafely(previousPlayer)
-                            previousPlayer = null
+                        if (player == null) {
+                            player = buildPlayer(context) // Create a new player only if it doesn't exist
+                        } else {
+                            player!!.stop()
+                            player!!.clearMediaItems()
                         }
-                        player = buildPlayer(context) // Create a new player
 
                         // Reset tracking now playing if the playlist programs were modified
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
@@ -1123,6 +1130,10 @@ class Monitor :
     }
 
     fun endPlayerSafely(player: Player?) {
+        graphicsJobs.forEach { it.cancel() }
+        graphicsJobs.clear()
+        keepAliveJob?.cancel()
+
         if (player == null) return
         try {
             // Detach from UI if this is the currently attached player
@@ -1348,6 +1359,9 @@ class Monitor :
 
     @RequiresApi(Build.VERSION_CODES.M)
     private fun triggerGraphics(nowPosition: Long) {
+        graphicsJobs.forEach { it.cancel() }
+        graphicsJobs.clear()
+
         hideLogo()
         // Always check initialization before hiding
         if (::tickerRecyclerView.isInitialized) {
@@ -1382,10 +1396,12 @@ class Monitor :
                         if (start >= nowPosition) {
                             val delayMillis = start - nowPosition
                             if (delayMillis > 0) {
-                                lifecycleScope.launch {
-                                    delay(delayMillis)
-                                    showLowerThird(ltd)
-                                }
+                                graphicsJobs.add(
+                                        lifecycleScope.launch {
+                                            delay(delayMillis)
+                                            showLowerThird(ltd)
+                                        }
+                                )
                             }
                         }
                     }
@@ -1410,10 +1426,12 @@ class Monitor :
                         if (start >= nowPosition) {
                             val delayMillis = start - nowPosition
                             if (delayMillis > 0) {
-                                lifecycleScope.launch {
-                                    delay(delayMillis)
-                                    showTicker(newsData)
-                                }
+                                graphicsJobs.add(
+                                        lifecycleScope.launch {
+                                            delay(delayMillis)
+                                            showTicker(newsData)
+                                        }
+                                )
                             }
                         }
                     }
@@ -1790,10 +1808,12 @@ class Monitor :
 
     @RequiresApi(Build.VERSION_CODES.O)
     fun scheduleKeepAlive(delayMillis: Long = (configuration?.wait ?: 30) * 1000L) {
-        lifecycleScope.launch {
-            delay(delayMillis)
-            keepOnAir()
-        }
+        keepAliveJob?.cancel()
+        keepAliveJob =
+                lifecycleScope.launch {
+                    delay(delayMillis)
+                    keepOnAir()
+                }
     }
 
     fun rebootDevice() {
