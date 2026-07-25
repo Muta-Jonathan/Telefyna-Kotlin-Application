@@ -20,10 +20,19 @@ class PlaylistScheduler : BroadcastReceiver() {
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onReceive(context: Context, intent: Intent) {
         try {
-            Monitor.instance?.switchNow(
-                intent.getIntExtra(PLAYLIST_INDEX, Monitor.instance!!.getFirstDefaultIndex()),
-                false, Monitor.instance!!
-            )
+            val monitor = Monitor.instance
+            if (monitor != null) {
+                monitor.switchNow(
+                    intent.getIntExtra(PLAYLIST_INDEX, monitor.getFirstDefaultIndex()),
+                    false, monitor
+                )
+            } else {
+                // Process was killed by OS — relaunch Monitor Activity
+                val launchIntent = Intent(context, Monitor::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+                context.startActivity(launchIntent)
+            }
         } catch (e: Exception) {
             e.message?.let { Logger.log(AuditLog.Event.ERROR, it) }
         }

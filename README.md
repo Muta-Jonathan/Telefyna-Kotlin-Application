@@ -11,6 +11,44 @@ ___
 [![Telefyna Demo](https://user-images.githubusercontent.com/29783151/126466086-2dc758df-0c20-403d-8b95-0a808243c47a.jpg)](https://www.youtube.com/watch?v=Oy5aN6MTcXM)
 
 ---
+## Architecture
+
+```mermaid
+graph TD
+    subgraph "Core Playout Engine"
+        M[Monitor Activity]
+        P[ExoPlayer]
+        FS[TelefynaForegroundService]
+    end
+
+    subgraph "Schedulers & 24/7 Watchdogs"
+        AM((AlarmManager))
+        PS[PlaylistScheduler]
+        MR[MaintenanceReceiver]
+        KOA[KeepOnAirReceiver]
+    end
+
+    subgraph "Data & Storage"
+        Cfg[(config.json)]
+        Ply[(Local / Online Media)]
+    end
+
+    Cfg -->|Loads configs| M
+    Ply -->|Streams/Plays| P
+    
+    M -->|Controls| P
+    M -->|Starts (Prevents OS Kill)| FS
+    
+    AM -.->|Scheduled Switch| PS
+    AM -.->|Midnight Maintenance| MR
+    AM -.->|Every 30s Check| KOA
+
+    PS -->|Auto-Relaunch / Switch| M
+    MR -->|Auto-Relaunch / Reload| M
+    KOA -->|Auto-Relaunch / Recover| M
+```
+
+---
 ## Installation
 * Download the [Coming Soon]() and install it, grant the app Storage permission and reload it if necessary
 

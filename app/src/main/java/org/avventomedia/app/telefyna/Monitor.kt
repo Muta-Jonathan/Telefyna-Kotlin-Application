@@ -7,10 +7,10 @@ import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
+
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
@@ -141,7 +141,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var fillingForLackOfInternet = false
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
-    private val keepOnAirReceiver = KeepOnAirReceiver()
+
 
     var dateFormat: SimpleDateFormat? = null
         private set
@@ -306,18 +306,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         sharedPreferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
 
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Start the silent foreground service for 24/7 priority
+        val serviceIntent = Intent(this, org.avventomedia.app.telefyna.listen.TelefynaForegroundService::class.java)
+        ContextCompat.startForegroundService(this, serviceIntent)
 
         alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
         // allow network etc actions since telefyna depends on all of these
         StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().permitAll().build())
 
-        // Register receiver with RECEIVER_NOT_EXPORTED flag for Android 14+
-        val filter = IntentFilter(KEEP_ON_AIR_ACTION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // API 33+
-            registerReceiver(keepOnAirReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(keepOnAirReceiver, filter)
-        }
+        // KeepOnAirReceiver is now manifest-registered (survives process death)
 
         // Initialize permissions and start maintenance only when permitted
         startMaintenanceIfPermitted()
@@ -932,12 +931,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         maintenanceHandler?.removeCallbacksAndMessages(null)
         handler?.removeCallbacksAndMessages(null)
-        // Unregister receiver and cancel alarm
-        try {
-            unregisterReceiver(keepOnAirReceiver)
-        } catch (e: Exception) {
-            // ignore if not registered
-        }
+        // Cancel keepOnAir alarm
         val intent = Intent(KEEP_ON_AIR_ACTION)
         val pendingIntent = PendingIntent.getBroadcast(
             this, 0, intent,
@@ -965,7 +959,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     override fun onStop() {
         super.onStop()
-        player?.pause()
+        // DO NOT pause ExoPlayer on stop — Telefyna is a 24/7 broadcasting app
+        // that must continue playing even when the Activity is in the background
+        // (e.g. TV screen off, HDMI-CEC standby, display sleep)
     }
 
     private fun getLastModifiedFor(index: Int): Long {
@@ -1441,9 +1437,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun scheduleKeepOnAir() {
+    fun scheduleKeepOnAir() {
         val delay = (configuration?.wait ?: 30) * 1000L // Default to 30 seconds if null
-        val intent = Intent("org.avventomedia.app.telefyna.KEEP_ON_AIR")
+        // Use explicit component intent targeting the manifest-registered KeepOnAirReceiver
+        val intent = Intent(this, org.avventomedia.app.telefyna.listen.KeepOnAirReceiver::class.java)
+        intent.action = KEEP_ON_AIR_ACTION
         val pendingIntent = PendingIntent.getBroadcast(
             this, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -1456,42 +1454,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         )
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun keepOnAir() {
-        val delay = (configuration?.wait)?.times(1000L)
-        when {
-            getRebootFile().exists() -> {
-                getRebootFile().delete()
-                rebootDevice()
-            }
-            getRestartFile().exists() -> {
-                getRestartFile().delete()
-                restartApp()
-            }
-            else -> {
-                if (getBackupConfigFile().exists()) backupConfig(false)
-                if (getBackupConfigResetFile().exists()) backupConfig(true)
-
-                if (nowPlayingIndex == getSecondDefaultIndex() && fillingForLackOfInternet && Utils.internetConnected() && failedBecauseOfInternetIndex != null) {
-                    fillingForLackOfInternet = false
-                    Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                    switchNow(failedBecauseOfInternetIndex!!, false, this)
-                    failedBecauseOfInternetIndex = null
-                } else {
-                    if (offAir) {
-                        offAir = false
-                        if (delay != null) {
-                            Logger.log(AuditLog.Event.STUCK, delay / 1000)
-                        }
-                        switchNow(nowPlayingIndex!!, false, this)
-                    } else {
-                        offAir = player == null || !player!!.isPlaying
-                    }
-                    scheduleKeepOnAir()
-                }
-            }
-        }
-    }
 
     private fun rebootDevice() {
         try {
@@ -1531,39 +1493,41 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-    inner class KeepOnAirReceiver : BroadcastReceiver() {
-        @RequiresApi(Build.VERSION_CODES.O)
-        override fun onReceive(context: Context, intent: Intent) {
-            when {
-                getRebootFile().exists() -> {
-                    getRebootFile().delete()
-                    rebootDevice()
-                }
-                getRestartFile().exists() -> {
-                    getRestartFile().delete()
-                    restartApp()
-                }
-                else -> {
-                    if (getBackupConfigFile().exists()) backupConfig(false)
-                    if (getBackupConfigResetFile().exists()) backupConfig(true)
+    /**
+     * Public entry point for the standalone KeepOnAirReceiver.
+     * Contains the keepOnAir logic that was previously in the inner class receiver.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun handleKeepOnAir() {
+        when {
+            getRebootFile().exists() -> {
+                getRebootFile().delete()
+                rebootDevice()
+            }
+            getRestartFile().exists() -> {
+                getRestartFile().delete()
+                restartApp()
+            }
+            else -> {
+                if (getBackupConfigFile().exists()) backupConfig(false)
+                if (getBackupConfigResetFile().exists()) backupConfig(true)
 
-                    if (nowPlayingIndex == getSecondDefaultIndex() &&
-                        fillingForLackOfInternet &&
-                        Utils.internetConnected() &&
-                        failedBecauseOfInternetIndex != null) {
-                        fillingForLackOfInternet = false
-                        Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                        switchNow(failedBecauseOfInternetIndex!!, false, this@Monitor)
-                        failedBecauseOfInternetIndex = null
-                    } else {
-                        offAir = player == null || !player!!.isPlaying
-                        if (offAir) {
-                            offAir = false
-                            Logger.log(AuditLog.Event.STUCK, (configuration?.wait ?: 0).toLong())
-                            switchNow(nowPlayingIndex!!, false, this@Monitor)
-                        }
-                        scheduleKeepOnAir() // Schedule the next execution
+                if (nowPlayingIndex == getSecondDefaultIndex() &&
+                    fillingForLackOfInternet &&
+                    Utils.internetConnected() &&
+                    failedBecauseOfInternetIndex != null) {
+                    fillingForLackOfInternet = false
+                    Logger.log(AuditLog.Event.INTERNET_RESTORED)
+                    switchNow(failedBecauseOfInternetIndex!!, false, this)
+                    failedBecauseOfInternetIndex = null
+                } else {
+                    offAir = player == null || !player!!.isPlaying
+                    if (offAir) {
+                        offAir = false
+                        Logger.log(AuditLog.Event.STUCK, (configuration?.wait ?: 0).toLong())
+                        switchNow(nowPlayingIndex!!, false, this)
                     }
+                    scheduleKeepOnAir() // Schedule the next execution
                 }
             }
         }
