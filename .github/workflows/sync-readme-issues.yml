@@ -1,0 +1,27 @@
+name: Sync README Issues
+
+on:
+  workflow_dispatch:
+    # This allows you to run this workflow manually from the GitHub Actions tab
+
+jobs:
+  sync-issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write # Required to allow the script to create and label issues
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Sync README To-Dos to GitHub Issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_NAME: ${{ github.repository }}
+        run: |
+          python .github/scripts/create_issues.py "$GITHUB_TOKEN" "$REPO_NAME"
