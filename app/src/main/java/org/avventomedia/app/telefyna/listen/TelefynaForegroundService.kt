@@ -21,6 +21,9 @@ class TelefynaForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val channelId = "telefyna_24_7_service"
         val channelName = "Telefyna Broadcasting Service"
         
@@ -56,9 +59,7 @@ class TelefynaForegroundService : Service() {
         } else {
             startForeground(1001, notification)
         }
-    }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // If the system kills the service, recreate it as soon as possible
         return START_STICKY
     }

@@ -728,12 +728,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         var duration = 0L
         try {
-            android.media.MediaMetadataRetriever().use { retriever ->
+            val retriever = android.media.MediaMetadataRetriever()
+            try {
                 retriever.setDataSource(cleanPath)
                 val timeStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                 if (timeStr != null) {
                     duration = timeStr.toLong()
                 }
+            } finally {
+                retriever.release()
             }
         } catch (e: Exception) {
             Logger.log(AuditLog.Event.ERROR, "Error reading duration for $cleanPath: ${e.message}")
@@ -748,13 +751,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun seekImmediateNonCompletedSlot(playlist: Playlist, mediaItems: List<MediaItem>): Seek? {
         val start = playlist.getStartTime()
         if (start != null) {
-            val startTime = start.timeInMillis
+            var currentItemStartTime = start.timeInMillis
             val now = Calendar.getInstance().timeInMillis
             mediaItems.forEachIndexed { i, mediaItem ->
                 val duration = getDuration(mediaItem.mediaId)
-                if ((duration + startTime) > now) {
-                    return Seek(i, now - startTime)
+                if ((currentItemStartTime + duration) > now) {
+                    return Seek(i, now - currentItemStartTime)
                 }
+                currentItemStartTime += duration
             }
         }
         // unseekable, slot is ended
@@ -854,7 +858,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
          * A file gets deleted or unmounted during playback (e.g. USB drive ejected, SD card removed).
          * The playlist was valid at prepare() time, but the file vanishes after playback starts.
          */
-        if (!filePath.isNullOrEmpty() && !File(filePath).exists()) {
+        val isLocal = currentItem?.localConfiguration?.uri?.scheme?.let { it != "http" && it != "https" } ?: true
+        if (isLocal && !filePath.isNullOrEmpty() && !File(filePath).exists()) {
             Logger.log(AuditLog.Event.ERROR, "Missing file detected: $filePath — switching to filler.")
             switchNow(getSecondDefaultIndex(), false, this)
             return
@@ -868,7 +873,16 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             is UnknownHostException, is IOException -> {
                 Logger.log(AuditLog.Event.NO_INTERNET, "Failing to play program because of no internet connection")
                 failedBecauseOfInternetIndex = nowPlayingIndex
-                // this will wait for set time on config before reloading
+                
+                // Fall back to fillers if the internet goes down, but only if fillers are actually installed
+                // (to prevent an infinite loop of bouncing between the online stream and empty fillers)
+                if (nowPlayingIndex != getSecondDefaultIndex()) {
+                    val fillersPlaylist = configuration?.playlists?.getOrNull(getSecondDefaultIndex())
+                    if (fillersPlaylist != null && maintenance?.retrievePrograms(fillersPlaylist)?.isNotEmpty() == true) {
+                        fillingForLackOfInternet = true
+                        switchNow(getSecondDefaultIndex(), false, this)
+                    }
+                }
             }
             is UnrecognizedInputFormatException -> {
                 if (player?.isCurrentWindowSeekable == true) {

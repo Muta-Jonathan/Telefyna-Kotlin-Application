@@ -5,6 +5,8 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.webkit.MimeTypeMap
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
@@ -49,9 +51,14 @@ class Maintenance {
         } else {
             startedSlotsToday = HashMap()
             pendingIntents = HashMap()
-            Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
-            Logger.log(AuditLog.Event.MAINTENANCE)
-            schedule()
+            Thread {
+                Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
+                Logger.log(AuditLog.Event.MAINTENANCE)
+                
+                Handler(Looper.getMainLooper()).post {
+                    schedule()
+                }
+            }.start()
         }
     }
 
