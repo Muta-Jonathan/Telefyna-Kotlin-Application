@@ -15,37 +15,37 @@ ___
 
 ```mermaid
 graph TD
-    subgraph "Core Playout Engine"
+    subgraph Core_Playout_Engine [Core Playout Engine]
         M[Monitor Activity]
         P[ExoPlayer]
-        FS[TelefynaForegroundService]
+        FS[ForegroundService]
     end
 
-    subgraph "Schedulers & 24/7 Watchdogs"
+    subgraph Schedulers_Watchdogs [Schedulers and Watchdogs]
         AM((AlarmManager))
         PS[PlaylistScheduler]
         MR[MaintenanceReceiver]
         KOA[KeepOnAirReceiver]
     end
 
-    subgraph "Data & Storage"
+    subgraph Data_Storage [Data Storage]
         Cfg[(config.json)]
-        Ply[(Local / Online Media)]
+        Ply[(Media Files)]
     end
 
     Cfg -->|Loads configs| M
-    Ply -->|Streams/Plays| P
+    Ply -->|Streams Media| P
     
     M -->|Controls| P
-    M -->|Starts (Prevents OS Kill)| FS
+    M -->|Prevents OS Kill| FS
     
-    AM -.->|Scheduled Switch| PS
-    AM -.->|Midnight Maintenance| MR
-    AM -.->|Every 30s Check| KOA
+    AM -->|Triggers| PS
+    AM -->|Triggers| MR
+    AM -->|Triggers| KOA
 
-    PS -->|Auto-Relaunch / Switch| M
-    MR -->|Auto-Relaunch / Reload| M
-    KOA -->|Auto-Relaunch / Recover| M
+    PS -->|Auto-Relaunch| M
+    MR -->|Auto-Relaunch| M
+    KOA -->|Auto-Relaunch| M
 ```
 
 ---
