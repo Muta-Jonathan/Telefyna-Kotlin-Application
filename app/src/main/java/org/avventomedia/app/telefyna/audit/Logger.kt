@@ -1,6 +1,9 @@
 package org.avventomedia.app.telefyna.audit
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
+import android.content.Context
 import android.os.Build
 import android.util.Log
 import androidx.annotation.OptIn
@@ -27,18 +30,39 @@ class Logger {
          */
         @OptIn(UnstableApi::class)
         fun log(event: AuditLog.Event, vararg params: Any) {
+            logWithContext(Monitor.instance, event, *params)
+        }
+
+        @OptIn(UnstableApi::class)
+        fun logWithContext(context: Context?, event: AuditLog.Event, vararg params: Any) {
             val message = String.format(event.message, *params)
             if (event == AuditLog.Event.ERROR) {
                 Log.e(event.name, message)
             } else {
                 Log.i(event.name, message)
             }
-            val path = Monitor.instance?.getAuditLogsFilePath(getToday())
+            
+            // Resolve path safely even if Monitor.instance is null
+            val path = if (context != null) {
+                val directory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    File(context.getExternalFilesDir(null), "telefynaAudit")
+                } else {
+                    File(android.os.Environment.getExternalStorageDirectory(), "telefynaAudit")
+                }
+                if (!directory.exists()) directory.mkdirs()
+                
+                // Get today's date
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                val today = dateFormat.format(Calendar.getInstance().time)
+                "${directory.absolutePath}/${today}.log"
+            } else {
+                null
+            }
+
             if (!path.isNullOrBlank()) {
                 val file = File(path)
                 val msg = String.format("%s %s: \n\t%s\n\n", getNow(), event.name, message)
                 try {
-                    // Always append log entries so logs are never deleted or overwritten
                     FileUtils.writeStringToFile(file, msg.replace("<br>", ","), StandardCharsets.UTF_8, true)
                 } catch (e: IOException) {
                     Log.e("WRITING_AUDIT_ERROR", e.message ?: "Error writing audit")
@@ -97,6 +121,38 @@ class Logger {
                 }
             }
             return audits
+        }
+
+        fun getOsKillReason(context: Context): String {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    val exitReasons = am.getHistoricalProcessExitReasons(context.packageName, 0, 1)
+                    if (exitReasons.isNotEmpty()) {
+                        val info = exitReasons[0]
+                        val reasonString = when (info.reason) {
+                            ApplicationExitInfo.REASON_ANR -> "ANR"
+                            ApplicationExitInfo.REASON_CRASH -> "CRASH"
+                            ApplicationExitInfo.REASON_CRASH_NATIVE -> "CRASH_NATIVE"
+                            ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "DEPENDENCY_DIED"
+                            ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "EXCESSIVE_RESOURCE_USAGE"
+                            ApplicationExitInfo.REASON_EXIT_SELF -> "EXIT_SELF"
+                            ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "INITIALIZATION_FAILURE"
+                            ApplicationExitInfo.REASON_LOW_MEMORY -> "LOW_MEMORY (LMK)"
+                            ApplicationExitInfo.REASON_OTHER -> "OTHER"
+                            ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "PERMISSION_CHANGE"
+                            ApplicationExitInfo.REASON_SIGNALED -> "SIGNALED"
+                            ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED"
+                            ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED"
+                            else -> "UNKNOWN (${info.reason})"
+                        }
+                        return "OS Kill Reason: $reasonString | Description: ${info.description ?: "None"}"
+                    }
+                } catch (e: Exception) {
+                    return "Failed to fetch OS kill reason: ${e.message}"
+                }
+            }
+            return "OS aggressively killed process (Exit reason not supported on this Android version)"
         }
     }
 }

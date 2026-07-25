@@ -28,6 +28,7 @@ class PlaylistScheduler : BroadcastReceiver() {
                 )
             } else {
                 // Process was killed by OS — relaunch Monitor Activity
+                Logger.logWithContext(context, AuditLog.Event.ERROR, "App Relaunch [PlaylistScheduler]. ${Logger.getOsKillReason(context)}")
                 val launchIntent = Intent(context, Monitor::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 }

@@ -34,6 +34,7 @@ google-services.json
 /captures/
 
 # Release / Outputs
-/release/
+release/
+app/release/
 *.apk
 *.aab

@@ -28,7 +28,7 @@ class KeepOnAirReceiver : BroadcastReceiver() {
             monitor.handleKeepOnAir()
         } else {
             // Process was killed by OS — relaunch Monitor Activity
-            Logger.log(AuditLog.Event.STUCK, 0L)
+            Logger.logWithContext(context, AuditLog.Event.ERROR, "App Relaunch [KeepOnAirReceiver]. ${Logger.getOsKillReason(context)}")
             val launchIntent = Intent(context, Monitor::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
