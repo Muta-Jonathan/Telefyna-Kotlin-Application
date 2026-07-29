@@ -41,17 +41,14 @@ class Logger {
             } else {
                 Log.i(event.name, message)
             }
-            
             // Resolve path safely even if Monitor.instance is null
-            val path = if (context != null) {
+            val path = Monitor.instance?.getAuditLogsFilePath(getToday()) ?: if (context != null) {
                 val directory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     File(context.getExternalFilesDir(null), "telefynaAudit")
                 } else {
                     File(android.os.Environment.getExternalStorageDirectory(), "telefynaAudit")
                 }
                 if (!directory.exists()) directory.mkdirs()
-                
-                // Get today's date
                 val dateFormat = SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
                 val today = dateFormat.format(Calendar.getInstance().time)
                 "${directory.absolutePath}/${today}.log"
@@ -63,6 +60,7 @@ class Logger {
                 val file = File(path)
                 val msg = String.format("%s %s: \n\t%s\n\n", getNow(), event.name, message)
                 try {
+                    // Always append log entries so logs are never deleted or overwritten
                     FileUtils.writeStringToFile(file, msg.replace("<br>", ","), StandardCharsets.UTF_8, true)
                 } catch (e: IOException) {
                     Log.e("WRITING_AUDIT_ERROR", e.message ?: "Error writing audit")

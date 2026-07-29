@@ -726,15 +726,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         var duration = 0L
         try {
-            val retriever = android.media.MediaMetadataRetriever()
-            try {
+            android.media.MediaMetadataRetriever().use { retriever ->
                 retriever.setDataSource(cleanPath)
                 val timeStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                 if (timeStr != null) {
                     duration = timeStr.toLong()
                 }
-            } finally {
-                retriever.release()
             }
         } catch (e: Exception) {
             Logger.log(AuditLog.Event.ERROR, "Error reading duration for $cleanPath: ${e.message}")
@@ -1465,6 +1462,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             pendingIntent
         )
     }
+
 
 
     private fun rebootDevice() {
