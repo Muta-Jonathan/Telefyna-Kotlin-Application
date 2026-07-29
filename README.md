@@ -99,7 +99,6 @@ graph TD
 - [ ] **HDMI CEC Control:** Support turning the physical TV screen on/off via HDMI-CEC commands based on business hours.
 
 ### Existing Backlog
-- [ ] SRT support: [ExoPlayer Issue #8647](https://github.com/google/ExoPlayer/issues/8647)
 - [ ] Auto-installation of config under resources if non-existent at first run.
 - [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
 - [ ] Test if dates down the playlist overwrite the schedule.
@@ -122,6 +121,7 @@ graph TD
 ## ✅ Solved Issues & Completed Updates
 
 ### 2026 - July
+- [x] **[SOLVED] SRT Stream Support:** Integrated custom `SrtDataSource` & `SrtDataSourceFactory` powered by `srtdroid-core` ([ExoPlayer Issue #8647](https://github.com/google/ExoPlayer/issues/8647)) to support `srt://` protocol playback *(pending end-to-end field testing)*.
 - [x] **[SOLVED] 24/7 Resilience Update:** Prevented aggressive Android OS memory kills by converting `Monitor` to use `FLAG_KEEP_SCREEN_ON` and attaching a persistent `TelefynaForegroundService`.
 - [x] **[SOLVED] Auto-Recovery Watchdogs:** Rewrote `KeepOnAirReceiver`, `MaintenanceReceiver`, and `PlaylistScheduler` as manifest-registered broadcast receivers to wake the app from total process death.
 - [x] **[SOLVED] Single Instance UI:** Fixed app relaunching opening a new/duplicate instance rather than resuming. Handled using `FLAG_ACTIVITY_SINGLE_TOP` in recovery intents.
