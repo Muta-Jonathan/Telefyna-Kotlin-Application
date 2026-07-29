@@ -506,10 +506,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         Logger.log(AuditLog.Event.PLAYLIST, getPlayingAtIndexLabel(index), gson.toJson(playlist))
 
         // Re-maintain if init file exists; drop it and reload schedule
-        val reInitializerFile = getReInitializerFile()
-        if (reInitializerFile.exists()) {
-            reInitializerFile.delete()
-            maintenance?.run()
+        if (getReInitializerFile().exists()) {
+            performRealtimeConfigReload()
             return
         }
 
@@ -1507,6 +1505,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun performRealtimeConfigReload() {
+        if (getReInitializerFile().exists()) {
+            getReInitializerFile().delete()
+        }
+        maintenance?.run()
+    }
+
     /**
      * Public entry point for the standalone KeepOnAirReceiver.
      * Contains the keepOnAir logic that was previously in the inner class receiver.
@@ -1521,6 +1527,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             getRestartFile().exists() -> {
                 getRestartFile().delete()
                 restartApp()
+            }
+            getReInitializerFile().exists() -> {
+                performRealtimeConfigReload()
+                scheduleKeepOnAir()
             }
             else -> {
                 if (getBackupConfigFile().exists()) backupConfig(false)
