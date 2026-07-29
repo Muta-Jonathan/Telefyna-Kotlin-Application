@@ -13,7 +13,6 @@ import android.content.Intent
 
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.media.MediaPlayer
 import android.net.Uri
 import android.provider.Settings
 import android.os.Build
@@ -725,16 +724,21 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
 
         var duration = 0L
+        val retriever = android.media.MediaMetadataRetriever()
         try {
-            android.media.MediaMetadataRetriever().use { retriever ->
-                retriever.setDataSource(cleanPath)
-                val timeStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                if (timeStr != null) {
-                    duration = timeStr.toLong()
-                }
+            retriever.setDataSource(cleanPath)
+            val timeStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+            if (timeStr != null) {
+                duration = timeStr.toLong()
             }
         } catch (e: Exception) {
             Logger.log(AuditLog.Event.ERROR, "Error reading duration for $cleanPath: ${e.message}")
+        } finally {
+            try {
+                retriever.release()
+            } catch (e: Exception) {
+                // ignore
+            }
         }
 
         if (duration > 0) {
