@@ -40,6 +40,11 @@
         <receiver android:name=".listen.PlaylistScheduler"  android:exported="true"
             tools:ignore="ExportedReceiver" />
         <receiver android:name=".listen.MaintenanceReceiver" android:exported="false" />
+        <receiver android:name=".listen.KeepOnAirReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="org.avventomedia.app.telefyna.KEEP_ON_AIR" />
+            </intent-filter>
+        </receiver>
         <receiver android:name=".listen.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
@@ -60,6 +65,10 @@
             </intent-filter>
         </receiver>
 
+        <service
+            android:name=".listen.TelefynaForegroundService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
     </application>
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"
@@ -73,6 +82,7 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />

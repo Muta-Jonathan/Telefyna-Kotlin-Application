@@ -21,8 +21,12 @@ class MaintenanceReceiver : BroadcastReceiver() {
             monitor.maintenance?.triggerMaintenance()
             monitor.maintenance?.scheduleNextMaintenance()
         } else {
-            Logger.log(AuditLog.Event.ERROR, "Monitor instance is null in MaintenanceReceiver")
-            // Optional: Start Monitor activity or reschedule if critical
+            // Process was killed by OS — relaunch Monitor Activity
+            Logger.logWithContext(context, AuditLog.Event.ERROR, "App Relaunch [MaintenanceReceiver]. ${Logger.getOsKillReason(context)}")
+            val launchIntent = Intent(context, Monitor::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            context.startActivity(launchIntent)
         }
     }
 }
