@@ -4,22 +4,15 @@ data class News(
     var messages: String? = null,
     // minutes to start ticker at during program play,  2#6#8 means start and 2nd, 6th and 8th second, This time includes bumpers
     var starts: String = "0",
-    var showTime: Boolean = true,
-    var speed: Speed = Speed.SLOW
+    var showTime: Boolean = true
 ) {
 
-    fun getStartsArray(): Array<Double> {
-        val startTimes = mutableListOf<Double>()
-
-        if (starts.isNotBlank()) {
-            starts.split(Graphics.MESSAGE_SPLITTER).forEach { start ->
-                if (start.isNotBlank()) {
-                    startTimes.add(start.trim().toDouble())
-                }
-            }
-            startTimes.sort()
+    fun getStartMinute(): Double {
+        return try {
+            if (starts.isNotBlank()) starts.trim().toDouble() else 0.0
+        } catch (e: NumberFormatException) {
+            0.0
         }
-        return startTimes.toTypedArray()
     }
 
     fun getMessagesArray(): Array<String> {
@@ -33,17 +26,5 @@ data class News(
             }
         }
         return mess.toTypedArray()
-    }
-
-    enum class Speed {
-        SLOW, FAST, VERY_FAST;
-
-        fun getDisplacement(): Int {
-            return when (this) {
-                FAST -> 50
-                VERY_FAST -> 100
-                else -> 1
-            }
-        }
     }
 }

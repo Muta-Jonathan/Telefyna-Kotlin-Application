@@ -1164,18 +1164,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 val messages = newsData.getMessagesArray()
                 if (messages.isNotEmpty()) {
                     initTickers(newsData)
-                    newsData.getStartsArray().forEach { s ->
-                        val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
-                        if (start <= nowPosition) {
-                            // Start time has arrived or passed -> show ticker immediately!
+                    val s = newsData.getStartMinute()
+                    val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
+                    if (start <= nowPosition) {
+                        // Start time has arrived or passed -> show ticker immediately!
+                        showTicker(newsData)
+                    } else {
+                        // Future start time -> schedule delay
+                        val delayMillis = start - nowPosition
+                        lifecycleScope.launch {
+                            delay(delayMillis)
                             showTicker(newsData)
-                        } else {
-                            // Future start time -> schedule delay
-                            val delayMillis = start - nowPosition
-                            lifecycleScope.launch {
-                                delay(delayMillis)
-                                showTicker(newsData)
-                            }
                         }
                     }
                 }
@@ -1306,12 +1305,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         tickerRecyclerView = findViewById(R.id.tickerRecyclerView)
         tickerRecyclerView.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         val tickerItems = listOf(
-            TickerItem(text = news.messages, time = news.showTime)
+            TickerItem(text = news.getMessagesArray().joinToString(" • "), time = news.showTime)
         )
         // Initialize the adapter with ticker items
         tickerAdapter = TickerAdapter(
-            tickerItems,
-            displacement = news.speed.getDisplacement(),
+            tickerItems
         )
         tickerRecyclerView.adapter = tickerAdapter
     }
