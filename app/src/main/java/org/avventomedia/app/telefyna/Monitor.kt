@@ -1151,7 +1151,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // Calculate new ticker state
         val news = graphics?.news
         val newTickerState = if (news != null && news.getMessagesArray().isNotEmpty()) {
-            "${news.messages}#${news.showTime}#${news.speed}"
+            "${news.messages}#${news.showTime}"
         } else null
 
         // Only hide/reload ticker if ticker configuration has changed across playlists
@@ -1376,8 +1376,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
          news.messages?.let {
              Logger.log(AuditLog.Event.DISPLAY_NEWS_ON, it)
          }
-         news.starts.let {
-             Logger.log(AuditLog.Event.DISPLAY_TIME_ON, it)
+         news.startMinute.let {
+             Logger.log(AuditLog.Event.DISPLAY_TIME_ON, it.toString())
          }
 
          fadeInRecyclerView(tickerRecyclerView)
