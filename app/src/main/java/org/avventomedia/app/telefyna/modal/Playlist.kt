@@ -87,7 +87,7 @@ data class Playlist(
     }
 
     fun scheduledToday(): Boolean {
-        if (active == null || !active || start.isNullOrBlank()) {
+        if (!active || start.isNullOrBlank()) {
             return false
         } else if (days.isNullOrEmpty()) {
             return true
@@ -117,10 +117,7 @@ data class Playlist(
             repeat == null -> parent.repeat
             else -> repeat
         }
-        active = when {
-            !parent.active -> false
-            else -> active
-        }
+        active = active && parent.active
         return this
     }
 

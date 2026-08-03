@@ -1164,7 +1164,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 val messages = newsData.getMessagesArray()
                 if (messages.isNotEmpty()) {
                     initTickers(newsData)
-                    val s = newsData.getStartMinute()
+                    val s = newsData.startMinute
                     val start = Math.round(s * 60 * 1000) // s is in minutes, send in ms
                     if (start <= nowPosition) {
                         // Start time has arrived or passed -> show ticker immediately!
