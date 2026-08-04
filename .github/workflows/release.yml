@@ -129,6 +129,7 @@ jobs:
           tag_name: ${{ env.TAG }}
           name: Telefyna ${{ env.TAG }}
           body: ${{ env.NOTES }}
+          generate_release_notes: true
           draft: false
           prerelease: false
           files: |
