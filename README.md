@@ -112,13 +112,15 @@ graph TD
 - [ ] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30.
 - [ ] Support YouTube links and streams.
 - [ ] Build reports from audits.
-- [ ] Write automated tests.
 - [ ] Read satellite channels and decoders as local playlists and streams.
 - [ ] Support streaming to HLS, Shoutcast, and Loudcast.
 
 ---
 
 ## ✅ Solved Issues & Completed Updates
+
+### 2026 - August
+- [x] **[SOLVED] Automated Testing & CI/CD:** Integrated a comprehensive JVM unit testing suite (MockK, JUnit) for core business logic (Scheduling, AuditLogs, Configs) and deployed automated GitHub Actions to verify tests on every Push and PR to `main`.
 
 ### 2026 - July
 - [x] **[SOLVED] SRT Stream Support:** Integrated custom `SrtDataSource` & `SrtDataSourceFactory` powered by `srtdroid-core` ([ExoPlayer Issue #8647](https://github.com/google/ExoPlayer/issues/8647)) to support `srt://` protocol playback *(pending end-to-end field testing)*.
