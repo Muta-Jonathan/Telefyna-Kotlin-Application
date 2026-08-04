@@ -9,7 +9,7 @@ data class LowerThird(
         val startTimes = mutableListOf<Double>()
 
         if (starts.isNotBlank()) {
-            starts.split(Graphics.MESSAGE_SPLITTER).forEach { start ->
+            starts.replace(",", Graphics.MESSAGE_SPLITTER).split(Graphics.MESSAGE_SPLITTER).forEach { start ->
                 if (start.isNotBlank()) {
                     startTimes.add(start.trim().toDouble())
                 } else {

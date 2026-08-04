@@ -4,6 +4,7 @@ import json
 import urllib.request
 import re
 import ssl
+import os
 
 def get_existing_issues(token, repo, ctx):
     """Fetch existing issues (open and closed) to prevent duplicates and update tags."""
@@ -19,7 +20,7 @@ def get_existing_issues(token, repo, ctx):
             if response.status == 200:
                 issues = json.loads(response.read().decode('utf-8'))
                 for issue in issues:
-                    existing_issues[issue['title'].strip()] = issue['number']
+                    existing_issues[issue['title'].strip()] = (issue['number'], issue['state'])
     except Exception as e:
         print(f"⚠️ Could not fetch existing issues: {e}")
     return existing_issues
@@ -42,6 +43,33 @@ def update_issue_labels(issue_number, labels, token, repo, ctx):
     except Exception as e:
         print(f"   ❌ Failed to add labels to Issue #{issue_number}: {str(e)}")
 
+def close_issue(issue_number, token, repo, ctx):
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+        "Content-Type": "application/json"
+    }
+    sha = os.environ.get("GITHUB_SHA")
+    if sha:
+        comment_url = f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments"
+        comment_data = {"body": f"Marked as completed in `README.md`. Closed by commit {sha}."}
+        comment_req = urllib.request.Request(comment_url, data=json.dumps(comment_data).encode('utf-8'), headers=headers)
+        try:
+            urllib.request.urlopen(comment_req, context=ctx)
+        except Exception as e:
+            print(f"   ⚠️ Failed to comment on issue #{issue_number}: {e}")
+
+    close_url = f"https://api.github.com/repos/{repo}/issues/{issue_number}"
+    close_data = {"state": "closed"}
+    close_req = urllib.request.Request(close_url, data=json.dumps(close_data).encode('utf-8'), headers=headers)
+    close_req.get_method = lambda: 'PATCH'
+    try:
+        with urllib.request.urlopen(close_req, context=ctx) as close_res:
+            if close_res.status == 200:
+                print(f"   🔒 Closed issue #{issue_number} (Marked as SOLVED)")
+    except Exception as e:
+        print(f"   ⚠️ Failed to close issue #{issue_number}: {e}")
+
 def create_issue(title, body, is_solved, labels, token, repo, ctx):
     url = f"https://api.github.com/repos/{repo}/issues"
     headers = {
@@ -62,13 +90,7 @@ def create_issue(title, body, is_solved, labels, token, repo, ctx):
                 
                 # If it's solved, close it immediately
                 if is_solved:
-                    close_url = f"https://api.github.com/repos/{repo}/issues/{issue_number}"
-                    close_data = {"state": "closed"}
-                    close_req = urllib.request.Request(close_url, data=json.dumps(close_data).encode('utf-8'), headers=headers)
-                    close_req.get_method = lambda: 'PATCH'
-                    with urllib.request.urlopen(close_req, context=ctx) as close_res:
-                        if close_res.status == 200:
-                            print(f"   🔒 Closed issue #{issue_number} (Marked as SOLVED)")
+                    close_issue(issue_number, token, repo, ctx)
             else:
                 print(f"❌ Failed to create '{title}': Status {response.status}")
     except Exception as e:
@@ -143,9 +165,11 @@ def main():
                 labels.append("scheduling")
 
             if title in existing_issues:
-                issue_number = existing_issues[title]
-                print(f"🔄 Issue already exists: '{title}' (Issue #{issue_number})")
+                issue_number, state = existing_issues[title]
+                print(f"🔄 Issue already exists: '{title}' (Issue #{issue_number}, State: {state})")
                 update_issue_labels(issue_number, labels, token, repo, ctx)
+                if is_solved and state == "open":
+                    close_issue(issue_number, token, repo, ctx)
                 continue
 
             issues_to_create.append((title, body, is_solved, labels))

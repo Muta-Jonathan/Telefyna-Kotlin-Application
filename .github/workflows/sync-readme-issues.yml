@@ -3,6 +3,11 @@ name: Sync README Issues
 on:
   workflow_dispatch:
     # This allows you to run this workflow manually from the GitHub Actions tab
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.md'
 
 jobs:
   sync-issues:

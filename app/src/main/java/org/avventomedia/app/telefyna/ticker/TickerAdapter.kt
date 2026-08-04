@@ -13,8 +13,7 @@ import androidx.recyclerview.widget.RecyclerView
 import org.avventomedia.app.telefyna.R
 
 class TickerAdapter(
-    private val items: List<TickerItem>,
-    private val displacement: Int, // Speed or displacement for scrolling
+    private val items: List<TickerItem>
 ) : RecyclerView.Adapter<TickerAdapter.TickerViewHolder>() {
 
     inner class TickerViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -50,8 +49,6 @@ class TickerAdapter(
         val modifiedText = "${StringUtils.spaces120}${tickerItem.text}" // Add space before the text
 
         holder.tickerText.text = modifiedText
-        // Apply displacement for scrolling effect (if needed)
-        holder.tickerText.translationX = (-displacement * position).toFloat()
         // Start the marquee animation
         holder.tickerText.isSelected = true // This triggers the marquee
     }
