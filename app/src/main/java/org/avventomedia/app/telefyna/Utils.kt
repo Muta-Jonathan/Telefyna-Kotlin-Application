@@ -86,10 +86,10 @@ object Utils {
     }
 
     fun formatDuration(millis: Long): String {
-        val hours = TimeUnit.MILLISECONDS.toHours(millis)
-        val mins = TimeUnit.MILLISECONDS.toMinutes(millis - TimeUnit.HOURS.toMillis(hours))
-        val secs = TimeUnit.MILLISECONDS.toSeconds(millis - TimeUnit.MINUTES.toMillis(mins))
-        return String.format("%02d:%02d:%02d", hours, mins, secs)
+        val hours = java.util.concurrent.TimeUnit.MILLISECONDS.toHours(millis)
+        val mins = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(millis) % 60
+        val secs = java.util.concurrent.TimeUnit.MILLISECONDS.toSeconds(millis) % 60
+        return String.format(java.util.Locale.ENGLISH, "%02d:%02d:%02d", hours, mins, secs)
     }
 
     fun readUrl(urlString: String): String? {
@@ -126,8 +126,11 @@ object Utils {
         return ips
     }
 
-    // TODO add more better algorithm
+    private val PLAYABLE_EXTENSIONS = listOf("mp4", "mkv", "avi", "mov", "ts", "webm", "png", "jpg", "jpeg", "webp", "gif")
+
     fun validPlayableItem(file: File): Boolean {
-        return file.exists() && !file.name.startsWith(".")
+        if (!file.exists() || file.name.startsWith(".")) return false
+        val extension = file.extension.lowercase(java.util.Locale.ENGLISH)
+        return PLAYABLE_EXTENSIONS.contains(extension)
     }
 }
