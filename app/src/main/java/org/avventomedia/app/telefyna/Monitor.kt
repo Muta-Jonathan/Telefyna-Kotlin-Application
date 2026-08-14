@@ -447,7 +447,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     @OptIn(UnstableApi::class)
     private fun buildPlayer(context: Context): ExoPlayer {
-        val renderersFactory = instance?.let { TelefynaRenderersFactory(it) }
+        val renderersFactory = instance?.let { 
+            TelefynaRenderersFactory(it).apply {
+                setEnableAudioTrackPlaybackParams(true)
+                setEnableDecoderFallback(true)
+            }
+        }
         val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
             .setUsage(androidx.media3.common.C.USAGE_MEDIA)
             .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -1510,6 +1515,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (getReInitializerFile().exists()) {
             getReInitializerFile().delete()
         }
+        cacheNowPlaying(false)
+        nowPlayingIndex = null
         maintenance?.run()
     }
 
