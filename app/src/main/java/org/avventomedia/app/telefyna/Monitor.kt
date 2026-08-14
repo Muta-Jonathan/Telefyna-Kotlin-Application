@@ -652,8 +652,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                             if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
                                 val seek = seekImmediateNonCompletedSlot(currentPlaylist!!, programItems)
                                 if (seek != null) {
-                                    nowProgramItem = if (seek.program == (programItems.size).minus(1)) seek.program else nowProgramItem?.plus(seek.program)
-                                    nowPosition = if (seek.program == (programItems.size).minus(1)) seek.position else nowProgramItem?.plus(seek.position)!!
+                                    nowProgramItem = seek.program
+                                    nowPosition = seek.position
                                 } else { // Slot is ended, switch to fillers
                                     Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getPlayingAtIndexLabel(nowPlayingIndex))
                                     switchNow(secondDefaultIndex, false, context)
@@ -753,14 +753,18 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun seekImmediateNonCompletedSlot(playlist: Playlist, mediaItems: List<MediaItem>): Seek? {
+        if (playlist.type == Playlist.Type.ONLINE) {
+            return Seek(0, 0L)
+        }
         val start = playlist.getStartTime()
         if (start != null) {
             var currentItemStartTime = start.timeInMillis
             val now = Calendar.getInstance().timeInMillis
             mediaItems.forEachIndexed { i, mediaItem ->
                 val duration = getDuration(mediaItem.mediaId)
-                if ((currentItemStartTime + duration) > now) {
-                    return Seek(i, now - currentItemStartTime)
+                if ((currentItemStartTime + duration) > now || duration == 0L) {
+                    val seekTime = now - currentItemStartTime
+                    return Seek(i, if (seekTime < 0) 0L else seekTime)
                 }
                 currentItemStartTime += duration
             }
