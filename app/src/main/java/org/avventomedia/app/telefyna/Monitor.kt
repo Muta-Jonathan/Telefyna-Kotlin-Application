@@ -225,20 +225,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
      * @return
      */
     private fun canResume(index: Int, repeat: Playlist.Repeat): Boolean {
-        val now = dateFormat?.format(Calendar.getInstance().time)
+        val nowStr = dateFormat?.format(Calendar.getInstance().time) ?: ""
         return try {
             val lastPlayed = Calendar.getInstance()
             val today = Calendar.getInstance()
-            lastPlayed.time = ((sharedPreferences.getString(
-                getPlaylistLastPlayed(
-                    getPlaylistIndex(index)
-                ), now) ?: now)?.let {
-                dateFormat?.parse(it)
-            } ?: now) as Date // Fallback to `now` if the parsing fails or result is null
+            
+            val lastPlayedStr = sharedPreferences.getString(getPlaylistLastPlayed(getPlaylistIndex(index)), nowStr) ?: nowStr
+            val lastPlayedDate = dateFormat?.parse(lastPlayedStr) ?: Calendar.getInstance().time
+            lastPlayed.time = lastPlayedDate
 
-            today.time = (now?.let { dateFormat?.parse(it) } ?: now) as Date
+            val todayDate = dateFormat?.parse(nowStr) ?: Calendar.getInstance().time
+            today.time = todayDate
+
             isRepeatable(repeat, lastPlayed, today)
-        } catch (e: ParseException) {
+        } catch (e: Exception) {
             e.printStackTrace()
             false
         }
@@ -591,6 +591,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_SAME) {
                                     nowProgramItem = previousProgram
                                     previousSeekTo = 0
+                                } else if (nowProgramItem == 0 && currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
+                                    nowProgramItem = previousProgram
                                 }
 
                                 currentPlaylist!!.name?.let {
@@ -857,12 +859,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 Player.STATE_ENDED -> {
                     val playlist = playlistByIndex[it]
                     val isFiniteType = playlist.type == Playlist.Type.LOCAL_SEQUENCED ||
-                            playlist.type == Playlist.Type.LOCAL_RANDOMIZED
+                            playlist.type == Playlist.Type.LOCAL_RANDOMIZED ||
+                            playlist.isResuming()
                     val isAtLastItem = player?.currentMediaItemIndex == (programItems.size - 1)
 
                     // Only switch to fillers when a truly finite playlist finishes
                     if (isFiniteType && isAtLastItem) {
-                        Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, "Playlist fully finished, switching to filler")
+                        val lastItemName = player?.currentMediaItemIndex?.let { programItems.getOrNull(it) }?.let { getMediaItemName(it) } ?: "Unknown"
+                        Logger.log(AuditLog.Event.PLAYLIST_EXHAUSTED, getPlayingAtIndexLabel(nowPlayingIndex), lastItemName)
                         switchNow(getSecondDefaultIndex(), false, this)
                         return
                     }
@@ -891,7 +895,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         nowPlayingIndex?.let {
             val isFiniteType = currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
-                    currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED
+                    currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED ||
+                    currentPlaylist?.isResuming() == true
 
             // ✅ We are *about to* play the final item — don't switch yet
             val aboutToPlayLast = nowProgramItem != null && nowProgramItem!! == programItems.size - 1

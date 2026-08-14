@@ -36,6 +36,7 @@ class AuditLog {
         PLAYLIST_MODIFIED("Playlist: %s is resetting resuming since it was modified %s seconds ago"),
         PLAYLIST_ITEM_CHANGE("Playing playlist: %s now playing: %s"),
         PLAYLIST_COMPLETED("$SPLITTER] Completed playing playlist: %s"),
+        PLAYLIST_EXHAUSTED("$SPLITTER] Exhausted all media items in folder for playlist: %s. Last played item: %s. Switching to filler."),
         PLAYLIST_ERROR("$SPLITTER] Error playing playlist: %s"),
 
         // player
