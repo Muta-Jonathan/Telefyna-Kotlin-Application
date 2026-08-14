@@ -965,22 +965,60 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
             }
             is UnrecognizedInputFormatException -> {
-                if (player?.isCurrentWindowSeekable == true) {
-                    nowProgramItem?.plus(1)?.let { player!!.seekTo(it, 0) }
+                Logger.log(AuditLog.Event.ERROR, "Broken video format detected: ${currentItem?.mediaId}")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    handlePlaybackCrash(currentItem)
                 }
             }
             is MediaCodecRenderer.DecoderInitializationException -> {
+                Logger.log(AuditLog.Event.ERROR, "Decoder error on: ${currentItem?.mediaId}")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
+                    handlePlaybackCrash(currentItem)
                 }
             }
             else -> {
                 if (!player?.isPlaying!!) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
+                        handlePlaybackCrash(currentItem)
                     }
                 }
             }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun handlePlaybackCrash(currentItem: MediaItem?) {
+        if (currentPlaylist?.type == Playlist.Type.ONLINE) {
+            if (nowPlayingIndex != getSecondDefaultIndex()) {
+                Logger.log(AuditLog.Event.ERROR, "Switching to filler due to broken stream.")
+                switchNow(getSecondDefaultIndex(), false, this)
+            } else {
+                nowPlayingIndex?.let { switchNow(it, false, this) }
+            }
+        } else if (player?.isCurrentWindowSeekable == true) {
+            Logger.log(AuditLog.Event.ERROR, "Skipping corrupted local file: ${currentItem?.mediaId}")
+            val nextItemIndex = (player?.currentMediaItemIndex ?: 0) + 1
+            if (nextItemIndex < programItems.size) {
+                player!!.seekTo(nextItemIndex, 0)
+            } else {
+                if (programItems.size <= 1) {
+                    Logger.log(AuditLog.Event.ERROR, "Only 1 item in folder and it crashed. Switching to filler to prevent infinite loop.")
+                    switchNow(getSecondDefaultIndex(), false, this)
+                } else {
+                    val isFiniteType = currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
+                            currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED ||
+                            currentPlaylist?.isResuming() == true
+                    if (isFiniteType) {
+                        val lastItemName = currentItem?.let { getMediaItemName(it) } ?: "Unknown"
+                        Logger.log(AuditLog.Event.PLAYLIST_EXHAUSTED, getPlayingAtIndexLabel(nowPlayingIndex), "Corrupted: $lastItemName")
+                        switchNow(getSecondDefaultIndex(), false, this)
+                    } else {
+                        player!!.seekTo(0, 0)
+                    }
+                }
+            }
+        } else if (nowPlayingIndex != getSecondDefaultIndex()) {
+            switchNow(getSecondDefaultIndex(), false, this)
         }
     }
 
