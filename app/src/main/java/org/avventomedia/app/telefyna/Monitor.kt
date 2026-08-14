@@ -644,9 +644,56 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 programItems.addAll(0, currentBumpers)
 
                                 // Add outro bumpers
-                                programItems.addAll(specialBumpersOutro)
-                                programItems.addAll(playListOutroBumpers)
-                                programItems.addAll(generalBumpersOutro)
+                                val allOutroBumpers = mutableListOf<MediaItem>().apply {
+                                    addAll(specialBumpersOutro)
+                                    addAll(playListOutroBumpers)
+                                    addAll(generalBumpersOutro)
+                                }
+
+                                // Look ahead to see what time the very next scheduled playlist is set to start today
+                                val nextScheduledTime = getNextScheduledTime(currentPlaylist!!)
+
+                                // If this is a scheduled playlist (not a filler), and there's another scheduled playlist after it today,
+                                // we want to make sure the outro bumpers don't overrun into the next slot's time.
+                                // If they overrun, they get abruptly cut off. It's better to drop bumpers that don't fit
+                                // and let the player naturally switch to fillers for the remaining time.
+                                if (isCurrentSlot && nextScheduledTime != null && currentPlaylist!!.getStartTime() != null && allOutroBumpers.isNotEmpty()) {
+                                    val capturedProgramItems = programItems.toList()
+                                    val capturedPlaylist = currentPlaylist
+
+                                    // Evaluating bumper durations uses MediaMetadataRetriever, which can be extremely slow
+                                    // (blocking the thread for tens of milliseconds per file). To prevent freezing the UI (ANR)
+                                    // while starting playback, we calculate the remaining time asynchronously on an IO thread.
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        // Calculate the estimated wall-clock time the main program finishes
+                                        var accumulatedTime = capturedPlaylist!!.getStartTime()!!.timeInMillis
+                                        for (item in capturedProgramItems) {
+                                            accumulatedTime += getDuration(item.mediaId)
+                                        }
+
+                                        // Only keep outro bumpers that can fully finish playing before the next scheduled slot starts
+                                        val fittingOutroBumpers = mutableListOf<MediaItem>()
+                                        for (bumper in allOutroBumpers) {
+                                            val bumperDuration = getDuration(bumper.mediaId)
+                                            if (accumulatedTime + bumperDuration <= nextScheduledTime) {
+                                                fittingOutroBumpers.add(bumper)
+                                                accumulatedTime += bumperDuration
+                                            }
+                                        }
+
+                                        // Safely switch back to the main thread and dynamically append the fitting bumpers
+                                        // into ExoPlayer's playlist queue while the main program is already playing.
+                                        lifecycleScope.launch(Dispatchers.Main) {
+                                            if (player != null && currentPlaylist == capturedPlaylist) {
+                                                programItems.addAll(fittingOutroBumpers)
+                                                player!!.addMediaItems(fittingOutroBumpers)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // If this is just a filler or there's no upcoming schedule, append everything immediately
+                                    programItems.addAll(allOutroBumpers)
+                                }
                             }
 
                             if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
@@ -750,6 +797,26 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             durationCache[cleanPath] = Pair(lastModified, duration)
         }
         return duration
+    }
+
+    /**
+     * Determines the start time (in ms) of the very next scheduled playlist for today.
+     * This is used to ensure the current playlist doesn't overrun its allotted time slot.
+     */
+    private fun getNextScheduledTime(currentPlaylist: Playlist): Long? {
+        val currentStart = currentPlaylist.getStartTime()?.timeInMillis ?: return null
+        var nextTime: Long? = null
+        for (playlist in playlistByIndex) {
+            if (playlist.scheduledToday()) {
+                val start = playlist.getStartTime()?.timeInMillis
+                if (start != null && start > currentStart) {
+                    if (nextTime == null || start < nextTime) {
+                        nextTime = start
+                    }
+                }
+            }
+        }
+        return nextTime
     }
 
     private fun seekImmediateNonCompletedSlot(playlist: Playlist, mediaItems: List<MediaItem>): Seek? {
