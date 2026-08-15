@@ -634,9 +634,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 }
 
                                 // Prepare playlist specific bumpers
-                                addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
+                                addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split(Utils.COMMA_SPLITTER)
                                     ?.get(0)}-INTRO"), false)
-                                addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
+                                addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split(Utils.COMMA_SPLITTER)
                                     ?.get(0)}-OUTRO"), false)
 
                                 // Add intro bumpers
@@ -1110,7 +1110,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun getDirectoryFromPlaylist(playlist: Playlist, i: Int): File {
-        return File(getPlaylistDirectory(playlist.isUsingExternalStorage) + File.separator + (playlist.urlOrFolder?.split("#")
+        return File(getPlaylistDirectory(playlist.isUsingExternalStorage) + File.separator + (playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)
             ?.get(i)
             ?.trim()))
     }

@@ -16,6 +16,8 @@ import org.avventomedia.app.telefyna.modal.Playlist
 
 object Utils {
 
+    const val COMMA_SPLITTER: String = ","
+
     @JvmStatic
     fun internetConnected(context: Context? = Monitor.instance): Boolean {
         return try {

@@ -1,5 +1,7 @@
 package org.avventomedia.app.telefyna.modal
 
+import org.avventomedia.app.telefyna.Utils
+
 data class LowerThird(
     var file: String? = null,
     var starts: String = "0",
@@ -8,8 +10,8 @@ data class LowerThird(
     fun getStartsArray(): Array<Double> {
         val startTimes = mutableListOf<Double>()
 
-        if (starts.isNotBlank()) {
-            starts.replace(",", Graphics.MESSAGE_SPLITTER).split(Graphics.MESSAGE_SPLITTER).forEach { start ->
+        if (!starts.isNullOrEmpty()) {
+            starts.replace(Utils.COMMA_SPLITTER, Graphics.MESSAGE_SPLITTER).split(Graphics.MESSAGE_SPLITTER).forEach { start ->
                 if (start.isNotBlank()) {
                     startTimes.add(start.trim().toDouble())
                 } else {

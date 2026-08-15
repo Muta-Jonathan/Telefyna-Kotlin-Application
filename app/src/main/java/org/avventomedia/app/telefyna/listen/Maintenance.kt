@@ -159,7 +159,7 @@ class Maintenance {
                     }
                 }
             } else {
-                it.urlOrFolder?.split("#")?.forEachIndexed { i, _ ->
+                it.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.forEachIndexed { i, _ ->
                     val pgms = mutableListOf<MediaItem>()
                     val localPlaylistFolder = Monitor.instance?.getDirectoryFromPlaylist(it, i)
                     if (localPlaylistFolder != null) {
