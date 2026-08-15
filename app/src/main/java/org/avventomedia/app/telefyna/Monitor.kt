@@ -492,6 +492,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     private fun samePlaylistPlaying(index: Int): Boolean {
         return nowPlayingIndex?.let { now ->
+            if (now >= playlistByIndex.size || index >= playlistByIndex.size) return false
             val current = getPlaylistIndex(now)
             val next = getPlaylistIndex(index)
             current == next
@@ -580,14 +581,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 val previousProgram = getSharedPlaylistMediaItem(getPlaylistIndex(nowPlayingIndex!!))
                                 var previousSeekTo = getSharedPlaylistSeekTo(getPlaylistIndex(nowPlayingIndex!!))
                                 if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
-                                    nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
-                                        0
+                                    if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
+                                        nowProgramItem = 0
+                                        previousSeekTo = 0
                                     } else if (currentPlaylist!!.repeat?.let { canResume(nowPlayingIndex!!, it) } == true) {
-                                        previousProgram.plus(1)
+                                        nowProgramItem = previousProgram.plus(1)
+                                        previousSeekTo = 0
                                     } else {
-                                        previousProgram
+                                        nowProgramItem = previousProgram
                                     }
-                                    previousSeekTo = 0
                                 } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_SAME) {
                                     nowProgramItem = previousProgram
                                     previousSeekTo = 0
@@ -608,7 +610,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                     }
                                     startOnePlayProgramItem = nowProgramItem
                                     nowProgramItem = 0
-                                } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
+                                }
+                                if (currentPlaylist!!.isResuming()) {
                                     nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
                                 }
                             } else {
@@ -745,6 +748,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         cacheNowPlaying(false)
                         triggerGraphics(nowPosition)
             }
+        } else {
+            // Already playing this playlist. Just update reference to apply any graphics/config changes
+            nowPlayingIndex = index
+            currentPlaylist = playlist
+            triggerGraphics(player?.currentPosition ?: 0L)
         }
     }
 
@@ -1024,7 +1032,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
 
     private fun getPlayingAtIndexLabel(index: Int?): String {
-        val playlistName = playlistByIndex[index?.let { getPlaylistIndex(it) }!!].name
+        if (index == null || index >= playlistByIndex.size) return "Unknown #$index"
+        val playlistName = playlistByIndex[getPlaylistIndex(index)].name
         return "$playlistName #$index"
     }
 
@@ -1630,7 +1639,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             getReInitializerFile().delete()
         }
         cacheNowPlaying(false)
-        nowPlayingIndex = null
         maintenance?.run()
     }
 
