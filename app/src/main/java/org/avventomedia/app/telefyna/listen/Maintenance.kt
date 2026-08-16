@@ -19,6 +19,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import org.avventomedia.app.telefyna.Metrics
 import org.avventomedia.app.telefyna.Monitor
 import org.avventomedia.app.telefyna.Utils
+import org.avventomedia.app.telefyna.DurationCacheManager
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
 import org.avventomedia.app.telefyna.modal.Playlist
@@ -55,6 +56,18 @@ class Maintenance {
                 Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
                 Logger.log(AuditLog.Event.MAINTENANCE)
                 
+                // Index local randomized playlists for intelligent fast sorting
+                Monitor.instance?.configuration?.playlists?.forEach { playlist ->
+                    if (playlist.type == Playlist.Type.LOCAL_RANDOMIZED && playlist.intelligentSort) {
+                        playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.forEachIndexed { i, _ ->
+                            val localPlaylistFolder = Monitor.instance?.getDirectoryFromPlaylist(playlist, i)
+                            if (localPlaylistFolder != null && localPlaylistFolder.exists()) {
+                                DurationCacheManager.indexDirectory(Monitor.instance!!, localPlaylistFolder)
+                            }
+                        }
+                    }
+                }
+
                 Handler(Looper.getMainLooper()).post {
                     schedule()
                 }

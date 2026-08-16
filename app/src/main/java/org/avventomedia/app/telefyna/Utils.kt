@@ -98,6 +98,33 @@ object Utils {
                 // Shuffle the playlist using the default random seed to ensure better randomness
                 // and reduce repeat patterns
                 programs.shuffle()
+
+                // Partition programs based on cached duration (> 60 seconds)
+                val monitor = Monitor.instance
+                if (monitor != null && playlist.intelligentSort) {
+                    val thresholdMillis = 60000L
+                    val longPrograms = mutableListOf<MediaItem>()
+                    val shortPrograms = mutableListOf<MediaItem>()
+
+                    programs.forEach { item ->
+                        val path = android.net.Uri.parse(item.mediaId).path
+                        if (path != null) {
+                            val file = java.io.File(path)
+                            val duration = DurationCacheManager.getDuration(monitor, file)
+                            if (duration >= thresholdMillis) {
+                                longPrograms.add(item)
+                            } else {
+                                shortPrograms.add(item)
+                            }
+                        } else {
+                            shortPrograms.add(item)
+                        }
+                    }
+
+                    programs.clear()
+                    programs.addAll(longPrograms)
+                    programs.addAll(shortPrograms)
+                }
             }
         }
     }

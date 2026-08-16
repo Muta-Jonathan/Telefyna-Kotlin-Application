@@ -131,6 +131,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var currentPlaylist: Playlist? = null
     private var playlistByIndex: MutableList<Playlist> = mutableListOf()
     private var programItems: MutableList<MediaItem> = mutableListOf()
+    private var upcomingProgramItems: MutableList<MediaItem>? = null
     private lateinit var tickerRecyclerView: RecyclerView
     private lateinit var tickerAdapter: TickerAdapter
     private var lowerThirdView: VideoView? = null
@@ -716,6 +717,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
                         val playerView = getPlayerView(true)
                         playerView.player?.removeListener(this) // Remove old listener
+                        // Tag all items with the current playlist index so we can detect gapless transitions
+                        programItems = programItems.map { it.buildUpon().setTag(index).build() }.toMutableList()
+
                         // Load the new media items
                         programItems.let { player!!.setMediaItems(it) }
                         nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
@@ -873,9 +877,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
                     // Only switch to fillers when a truly finite playlist finishes
                     if (isFiniteType && isAtLastItem) {
-                        val lastItemName = player?.currentMediaItemIndex?.let { programItems.getOrNull(it) }?.let { getMediaItemName(it) } ?: "Unknown"
-                        Logger.log(AuditLog.Event.PLAYLIST_EXHAUSTED, getPlayingAtIndexLabel(nowPlayingIndex), lastItemName)
-                        switchNow(getSecondDefaultIndex(), false, this)
+                        if (player?.hasNextMediaItem() == false) {
+                            val lastItemName = player?.currentMediaItemIndex?.let { programItems.getOrNull(it) }?.let { getMediaItemName(it) } ?: "Unknown"
+                            Logger.log(AuditLog.Event.PLAYLIST_EXHAUSTED, getPlayingAtIndexLabel(nowPlayingIndex), lastItemName)
+                            switchNow(getSecondDefaultIndex(), false, this)
+                        }
                         return
                     }
                 }
@@ -900,29 +906,76 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
+    private fun preAppendNextPlaylist() {
+        val nextPlaylistIndex = getSecondDefaultIndex()
+        val nextPlaylist = playlistByIndex[nextPlaylistIndex]
+
+        if (nextPlaylist.type == Playlist.Type.ONLINE && !Utils.internetConnected()) {
+            Logger.log(AuditLog.Event.PLAYLIST_ERROR, "No internet for next online stream. Failing back to first default.")
+            val fallbackIndex = getFirstDefaultIndex()
+            val fallbackPlaylist = playlistByIndex[fallbackIndex]
+            appendPlaylist(fallbackPlaylist, fallbackIndex)
+        } else {
+            appendPlaylist(nextPlaylist, nextPlaylistIndex)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun appendPlaylist(playlist: Playlist, index: Int) {
+        var upcomingItems = maintenance?.retrievePrograms(playlist) as? MutableList<MediaItem> ?: return
+        if (upcomingItems.isEmpty()) {
+            upcomingItems = maintenance?.retrievePrograms(playlistByIndex[getFirstDefaultIndex()]) as? MutableList<MediaItem> ?: return
+        }
+
+        upcomingProgramItems = upcomingItems.map { it.buildUpon().setTag(index).build() }.toMutableList()
+        player?.addMediaItems(upcomingProgramItems!!)
+        Logger.log(AuditLog.Event.PLAYLIST_SWITCH, "Pre-appended next playlist: ${playlist.name}")
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         nowPlayingIndex?.let {
+            val itemPlaylistIndex = mediaItem?.localConfiguration?.tag as? Int
+            
+            // Check if we seamlessly rolled over into a pre-appended playlist
+            if (itemPlaylistIndex != null && itemPlaylistIndex != it) {
+                val oldPlaylistName = getNowPlayingPlaylistLabel()
+                nowPlayingIndex = itemPlaylistIndex
+                currentPlaylist = playlistByIndex[itemPlaylistIndex]
+                
+                if (upcomingProgramItems != null) {
+                    programItems = upcomingProgramItems!!
+                    upcomingProgramItems = null
+                } else {
+                    programItems = maintenance?.retrievePrograms(currentPlaylist) as MutableList<MediaItem>
+                    programItems = programItems.map { p -> p.buildUpon().setTag(itemPlaylistIndex).build() }.toMutableList()
+                }
+
+                val currentIndex = player?.currentMediaItemIndex ?: 0
+                if (currentIndex > 0) {
+                    player?.removeMediaItems(0, currentIndex)
+                }
+                
+                nowProgramItem = 0
+                Logger.log(AuditLog.Event.PLAYLIST_SWITCH, "Gapless transition complete from $oldPlaylistName to ${getNowPlayingPlaylistLabel()}")
+            } else {
+                nowProgramItem = player?.currentMediaItemIndex
+            }
+            
+            cacheNowPlaying(false)
+
             val isFiniteType = currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
                     currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED ||
                     currentPlaylist?.isResuming() == true
 
-            // ✅ We are *about to* play the final item — don't switch yet
+            // Trigger pre-append if we are playing the last item
             val aboutToPlayLast = nowProgramItem != null && nowProgramItem!! == programItems.size - 1
-            val playlistName =  getNowPlayingPlaylistLabel()
 
             if (isFiniteType && aboutToPlayLast) {
-                Logger.log(
-                    AuditLog.Event.PLAYLIST_LAST_ITEM,
-                    "$playlistName — waiting for STATE_ENDED to switch"
-                )
+                if ((player?.mediaItemCount ?: 0) <= programItems.size) {
+                    preAppendNextPlaylist()
+                }
             }
-
-            // ✅ Only switch after final item has fully played — in STATE_ENDED (not here!)
-            // So DO NOT switch here — only log
-
-            // ✅ Now safely increment AFTER the check
-            nowProgramItem = player?.currentMediaItemIndex
-            cacheNowPlaying(false)
 
             mediaItem?.let { item ->
                 Logger.log(

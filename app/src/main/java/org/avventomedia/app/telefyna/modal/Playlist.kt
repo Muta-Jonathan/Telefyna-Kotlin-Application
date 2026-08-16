@@ -45,7 +45,9 @@ data class Playlist(
     // Index of playlist to replace with when empty
     var emptyReplacer: Int? = null,
     var seekTo: Seek = Seek(0, 0),
-    var repeat: Repeat? = null
+    var repeat: Repeat? = null,
+    // Flag to enable duration-based bin-packing for LOCAL_RANDOMIZED playlists
+    var intelligentSort: Boolean = true
 ) {
 
     val isPlayingGeneralBumpers: Boolean

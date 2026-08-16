@@ -23,7 +23,7 @@ Telefyna is a highly resilient, automated media playout engine built for Digital
 graph TD
     subgraph Core_Playout_Engine [Core Playout Engine]
         M[Monitor Activity]
-        P[ExoPlayer]
+        P[ExoPlayer Gapless Queue]
         FS[ForegroundService]
     end
 
@@ -34,15 +34,25 @@ graph TD
         KOA[KeepOnAirReceiver]
     end
 
+    subgraph Logic_Engine [Intelligent Logic]
+        DCM[DurationCacheManager]
+        U[Playlist Bin-Packing]
+    end
+
     subgraph Data_Storage [Data Storage]
         Cfg[(config.json)]
         Ply[(Media Files)]
+        DC[(durations.json)]
     end
 
-    Cfg -->|Loads configs| M
-    Ply -->|Streams Media| P
+    Cfg -->|Loads configs| U
+    Ply -->|Extracts Metadata| DCM
+    DCM -->|Caches| DC
+    DC -->|O1 Duration Lookup| U
+    U -->|Sends Sorted Playlists| M
     
-    M -->|Controls| P
+    Ply -->|Streams Media| P
+    M -->|Pre-Appends Upcoming| P
     M -->|Prevents OS Kill| FS
     
     AM -->|Triggers| PS
@@ -50,6 +60,7 @@ graph TD
     AM -->|Triggers| KOA
 
     PS -->|Auto-Relaunch| M
+    MR -->|Background Syncs| DCM
     MR -->|Auto-Relaunch| M
     KOA -->|Auto-Relaunch| M
 ```
@@ -97,6 +108,7 @@ graph TD
 - [ ] **Device Metrics Reporting:** Log CPU temperature, free RAM, and storage health to the audit logs to predict hardware failures.
 - [ ] **Fallback Local Caching:** Automatically download and cache a rolling 24-hour window of `ONLINE` stream segments in case the internet goes down completely.
 - [ ] **HDMI CEC Control:** Support turning the physical TV screen on/off via HDMI-CEC commands based on business hours.
+- [ ] **Playlist-Level Intelligent Sorting:** Transition the `intelligentSort` duration-based bin-packing flag to be configurable per-playlist via the remote `config.json` scheduler tool, allowing users to toggle it off for specific randomized bumper folders.
 
 ### Existing Backlog
 - [ ] Auto-installation of config under resources if non-existent at first run.
@@ -121,12 +133,11 @@ graph TD
 ## Solved Issues & Completed Updates
 
 ### 2026 - August
+- [x] **[SOLVED] Gapless Transitions & Pre-Buffering:** Eliminated "audio pumping" and "black frame flashes" during playlist transitions. ExoPlayer now silently pre-appends upcoming media items to the background hardware queue, creating perfectly seamless, TV-broadcast-quality transitions. Fallbacks use `app:keep_content_on_player_reset="true"` to freeze the last frame instead of cutting to black.
+- [x] **[SOLVED] Intelligent Filler Selection (Bin-Packing):** `LOCAL_RANDOMIZED` playlists (like Fillers) now intelligently prioritize playing longer videos (>= 60s) before padding the remaining time with shorter bumpers (< 60s). This is powered by a zero-overhead `DurationCacheManager` that pre-extracts exact media durations in the background during maintenance.
 - [x] **[SOLVED] Corrupted File Infinite Crash Loop:** Fixed a critical bug where decoder crashes on malformed local files (e.g. Invalid NAL length) would cause the playlist to aggressively loop and restart the same corrupted file indefinitely. The player now gracefully skips corrupted files, or safely switches to fillers if the folder is completely exhausted.
 - [x] **[SOLVED] Random Playlist Repetition:** Upgraded the random seed generation in `LOCAL_RANDOMIZED` from a predictable `System.nanoTime()` clock to the highly unpredictable `Random.Default`, permanently fixing the issue where shuffled playlists repeated identical daily sequences.
 - [x] **[SOLVED] Finite Resuming Playlist Loops:** Fixed a bug where finite resuming playlists (like `LOCAL_RESUMING_ONE`) were not fully tracked as finite. They now correctly log `PLAYLIST_EXHAUSTED` and switch to fallback fillers when their content finishes earlier than the scheduled time slot.
-- [x] **[SOLVED] Automated Testing & CI/CD:** Integrated a comprehensive JVM unit testing suite (MockK, JUnit) for core business logic (Scheduling, AuditLogs, Configs) and deployed automated GitHub Actions to verify tests on every Push and PR to `main`.
-
-### 2026 - August
 - [x] **[SOLVED] Automated Testing & CI/CD:** Integrated a comprehensive JVM unit testing suite (MockK, JUnit) for core business logic (Scheduling, AuditLogs, Configs) and deployed automated GitHub Actions to verify tests on every Push and PR to `main`.
 
 ### 2026 - July
