@@ -14,7 +14,8 @@ data class Config(
     // seconds to keep checking on player, wait on internet
     var wait: Int = 30,
     var alerts: Alerts? = null,
-    var playlists: Array<Playlist>? = null
+    var playlists: Array<Playlist>? = null,
+    var schedules: Array<Schedule>? = null
 ) {
     val isAutomationDisabled: Boolean
             get() = automationDisabled

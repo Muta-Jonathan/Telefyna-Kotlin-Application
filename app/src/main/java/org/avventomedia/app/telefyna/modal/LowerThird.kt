@@ -10,15 +10,18 @@ data class LowerThird(
     fun getStartsArray(): Array<Double> {
         val startTimes = mutableListOf<Double>()
 
-        if (!starts.isNullOrEmpty()) {
-            starts.replace(Utils.COMMA_SPLITTER, Graphics.MESSAGE_SPLITTER).split(Graphics.MESSAGE_SPLITTER).forEach { start ->
-                if (start.isNotBlank()) {
-                    startTimes.add(start.trim().toDouble())
-                } else {
-                    // If no splitter, treat the entire string as a single start time
-                    startTimes.add(starts.trim().toDouble())
+        if (!starts.isNullOrBlank()) {
+            starts.replace(Utils.COMMA_SPLITTER, ",")
+                .replace(Graphics.MESSAGE_SPLITTER, ",")
+                .replace("#", ",")
+                .split(",")
+                .forEach { start ->
+                    if (start.isNotBlank()) {
+                        start.trim().toDoubleOrNull()?.let {
+                            startTimes.add(it)
+                        }
+                    }
                 }
-            }
             startTimes.sort()
         }
         return startTimes.toTypedArray()

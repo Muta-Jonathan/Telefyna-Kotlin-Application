@@ -6,6 +6,7 @@ import java.util.Calendar
 data class Playlist(
     private val DATE_FORMAT: String = "dd-MM-yyyy",
 
+    var id: String? = null,
     var active: Boolean = true,
     // lastModified date: Date#toLocaleString
     var lastModified: String? = null,
@@ -38,9 +39,8 @@ data class Playlist(
     var days: Array<Int>? = null,
     // dates to schedule for, must be in DATE_FORMAT(dd-MM-yyyy)
     var dates: Array<String>? = null,
-    // time to start stream in (HH:mm)
     var start: String? = null,
-    // index to a playlist count from top this is scheduling, must be above it. use only with day, repeats and start fields
+    // internal reference to base playlist index (used by Monitor to save state)
     var schedule: Int? = null,
     // Index of playlist to replace with when empty
     var emptyReplacer: Int? = null,
