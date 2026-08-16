@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://avventomedia.org/home/old/wp-content/uploads/2020/12/telefyna.png" alt="Telefyna Logo" width="300" />
+  <img src="app/src/main/ic_launcher-playstore.png" alt="Telefyna Logo" width="300" />
 
   # Telefyna
   
@@ -8,7 +8,7 @@
 
 ---
 
-## 🚀 Overview
+## Overview
 
 Telefyna is a highly resilient, automated media playout engine built for Digital Signage and TV Broadcasting. It runs completely unattended, scheduling and playing local folders and online streams according to your `config.json`. 
 
@@ -17,7 +17,7 @@ Telefyna is a highly resilient, automated media playout engine built for Digital
 
 ---
 
-## 🏗 Architecture
+## Architecture
 
 ```mermaid
 graph TD
@@ -56,7 +56,7 @@ graph TD
 
 ---
 
-## ⚙️ Installation & Setup
+## Installation & Setup
 
 1. **Install:** Download the APK and install it on your Android TV Box.
 2. **Permissions:** Grant the app **Storage** permissions.
@@ -69,7 +69,7 @@ graph TD
 
 ---
 
-## 🛠 Features & Capabilities
+## Features & Capabilities
 
 ### Playlists & Fallbacks
 * **Primary Default:** The first playlist is the default filler if nothing else is scheduled.
@@ -88,7 +88,7 @@ graph TD
 
 ---
 
-## 📈 Roadmap / To Do
+## Roadmap / To Do
 
 ### Industry Standard TV / Digital Signage Features
 - [ ] **Hardware Watchdog Integration:** Support for hardware-level watchdogs (pinging `/dev/watchdog`) in case the entire Android OS freezes.
@@ -118,7 +118,7 @@ graph TD
 
 ---
 
-## ✅ Solved Issues & Completed Updates
+## Solved Issues & Completed Updates
 
 ### 2026 - August
 - [x] **[SOLVED] Corrupted File Infinite Crash Loop:** Fixed a critical bug where decoder crashes on malformed local files (e.g. Invalid NAL length) would cause the playlist to aggressively loop and restart the same corrupted file indefinitely. The player now gracefully skips corrupted files, or safely switches to fillers if the folder is completely exhausted.
