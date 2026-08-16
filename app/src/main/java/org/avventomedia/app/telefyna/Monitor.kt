@@ -225,20 +225,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
      * @return
      */
     private fun canResume(index: Int, repeat: Playlist.Repeat): Boolean {
-        val now = dateFormat?.format(Calendar.getInstance().time)
+        val nowStr = dateFormat?.format(Calendar.getInstance().time) ?: ""
         return try {
             val lastPlayed = Calendar.getInstance()
             val today = Calendar.getInstance()
-            lastPlayed.time = ((sharedPreferences.getString(
-                getPlaylistLastPlayed(
-                    getPlaylistIndex(index)
-                ), now) ?: now)?.let {
-                dateFormat?.parse(it)
-            } ?: now) as Date // Fallback to `now` if the parsing fails or result is null
+            
+            val lastPlayedStr = sharedPreferences.getString(getPlaylistLastPlayed(getPlaylistIndex(index)), nowStr) ?: nowStr
+            val lastPlayedDate = dateFormat?.parse(lastPlayedStr) ?: Calendar.getInstance().time
+            lastPlayed.time = lastPlayedDate
 
-            today.time = (now?.let { dateFormat?.parse(it) } ?: now) as Date
+            val todayDate = dateFormat?.parse(nowStr) ?: Calendar.getInstance().time
+            today.time = todayDate
+
             isRepeatable(repeat, lastPlayed, today)
-        } catch (e: ParseException) {
+        } catch (e: Exception) {
             e.printStackTrace()
             false
         }
@@ -447,7 +447,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     @OptIn(UnstableApi::class)
     private fun buildPlayer(context: Context): ExoPlayer {
-        val renderersFactory = instance?.let { TelefynaRenderersFactory(it) }
+        val renderersFactory = instance?.let { 
+            TelefynaRenderersFactory(it).apply {
+                setEnableAudioTrackPlaybackParams(true)
+                setEnableDecoderFallback(true)
+            }
+        }
         val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
             .setUsage(androidx.media3.common.C.USAGE_MEDIA)
             .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -487,6 +492,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     private fun samePlaylistPlaying(index: Int): Boolean {
         return nowPlayingIndex?.let { now ->
+            if (now >= playlistByIndex.size || index >= playlistByIndex.size) return false
             val current = getPlaylistIndex(now)
             val next = getPlaylistIndex(index)
             current == next
@@ -575,17 +581,20 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 val previousProgram = getSharedPlaylistMediaItem(getPlaylistIndex(nowPlayingIndex!!))
                                 var previousSeekTo = getSharedPlaylistSeekTo(getPlaylistIndex(nowPlayingIndex!!))
                                 if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
-                                    nowProgramItem = if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
-                                        0
+                                    if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
+                                        nowProgramItem = 0
+                                        previousSeekTo = 0
                                     } else if (currentPlaylist!!.repeat?.let { canResume(nowPlayingIndex!!, it) } == true) {
-                                        previousProgram.plus(1)
+                                        nowProgramItem = previousProgram.plus(1)
+                                        previousSeekTo = 0
                                     } else {
-                                        previousProgram
+                                        nowProgramItem = previousProgram
                                     }
-                                    previousSeekTo = 0
                                 } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_SAME) {
                                     nowProgramItem = previousProgram
                                     previousSeekTo = 0
+                                } else if (nowProgramItem == 0 && currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
+                                    nowProgramItem = previousProgram
                                 }
 
                                 currentPlaylist!!.name?.let {
@@ -601,7 +610,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                     }
                                     startOnePlayProgramItem = nowProgramItem
                                     nowProgramItem = 0
-                                } else if (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING) {
+                                }
+                                if (currentPlaylist!!.isResuming()) {
                                     nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
                                 }
                             } else {
@@ -624,9 +634,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 }
 
                                 // Prepare playlist specific bumpers
-                                addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
+                                addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split(Utils.COMMA_SPLITTER)
                                     ?.get(0)}-INTRO"), false)
-                                addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split("#")
+                                addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split(Utils.COMMA_SPLITTER)
                                     ?.get(0)}-OUTRO"), false)
 
                                 // Add intro bumpers
@@ -639,16 +649,63 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 programItems.addAll(0, currentBumpers)
 
                                 // Add outro bumpers
-                                programItems.addAll(specialBumpersOutro)
-                                programItems.addAll(playListOutroBumpers)
-                                programItems.addAll(generalBumpersOutro)
+                                val allOutroBumpers = mutableListOf<MediaItem>().apply {
+                                    addAll(specialBumpersOutro)
+                                    addAll(playListOutroBumpers)
+                                    addAll(generalBumpersOutro)
+                                }
+
+                                // Look ahead to see what time the very next scheduled playlist is set to start today
+                                val nextScheduledTime = getNextScheduledTime(currentPlaylist!!)
+
+                                // If this is a scheduled playlist (not a filler), and there's another scheduled playlist after it today,
+                                // we want to make sure the outro bumpers don't overrun into the next slot's time.
+                                // If they overrun, they get abruptly cut off. It's better to drop bumpers that don't fit
+                                // and let the player naturally switch to fillers for the remaining time.
+                                if (isCurrentSlot && nextScheduledTime != null && currentPlaylist!!.getStartTime() != null && allOutroBumpers.isNotEmpty()) {
+                                    val capturedProgramItems = programItems.toList()
+                                    val capturedPlaylist = currentPlaylist
+
+                                    // Evaluating bumper durations uses MediaMetadataRetriever, which can be extremely slow
+                                    // (blocking the thread for tens of milliseconds per file). To prevent freezing the UI (ANR)
+                                    // while starting playback, we calculate the remaining time asynchronously on an IO thread.
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        // Calculate the estimated wall-clock time the main program finishes
+                                        var accumulatedTime = capturedPlaylist!!.getStartTime()!!.timeInMillis
+                                        for (item in capturedProgramItems) {
+                                            accumulatedTime += getDuration(item.mediaId)
+                                        }
+
+                                        // Only keep outro bumpers that can fully finish playing before the next scheduled slot starts
+                                        val fittingOutroBumpers = mutableListOf<MediaItem>()
+                                        for (bumper in allOutroBumpers) {
+                                            val bumperDuration = getDuration(bumper.mediaId)
+                                            if (accumulatedTime + bumperDuration <= nextScheduledTime) {
+                                                fittingOutroBumpers.add(bumper)
+                                                accumulatedTime += bumperDuration
+                                            }
+                                        }
+
+                                        // Safely switch back to the main thread and dynamically append the fitting bumpers
+                                        // into ExoPlayer's playlist queue while the main program is already playing.
+                                        lifecycleScope.launch(Dispatchers.Main) {
+                                            if (player != null && currentPlaylist == capturedPlaylist) {
+                                                programItems.addAll(fittingOutroBumpers)
+                                                player!!.addMediaItems(fittingOutroBumpers)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // If this is just a filler or there's no upcoming schedule, append everything immediately
+                                    programItems.addAll(allOutroBumpers)
+                                }
                             }
 
                             if (isCurrentSlot && nowPlayingIndex != secondDefaultIndex) { // Not fillers
                                 val seek = seekImmediateNonCompletedSlot(currentPlaylist!!, programItems)
                                 if (seek != null) {
-                                    nowProgramItem = if (seek.program == (programItems.size).minus(1)) seek.program else nowProgramItem?.plus(seek.program)
-                                    nowPosition = if (seek.program == (programItems.size).minus(1)) seek.position else nowProgramItem?.plus(seek.position)!!
+                                    nowProgramItem = seek.program
+                                    nowPosition = seek.position
                                 } else { // Slot is ended, switch to fillers
                                     Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, getPlayingAtIndexLabel(nowPlayingIndex))
                                     switchNow(secondDefaultIndex, false, context)
@@ -691,6 +748,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         cacheNowPlaying(false)
                         triggerGraphics(nowPosition)
             }
+        } else {
+            // Already playing this playlist. Just update reference to apply any graphics/config changes
+            nowPlayingIndex = index
+            currentPlaylist = playlist
+            triggerGraphics(player?.currentPosition ?: 0L)
         }
     }
 
@@ -747,15 +809,39 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return duration
     }
 
+    /**
+     * Determines the start time (in ms) of the very next scheduled playlist for today.
+     * This is used to ensure the current playlist doesn't overrun its allotted time slot.
+     */
+    private fun getNextScheduledTime(currentPlaylist: Playlist): Long? {
+        val currentStart = currentPlaylist.getStartTime()?.timeInMillis ?: return null
+        var nextTime: Long? = null
+        for (playlist in playlistByIndex) {
+            if (playlist.scheduledToday()) {
+                val start = playlist.getStartTime()?.timeInMillis
+                if (start != null && start > currentStart) {
+                    if (nextTime == null || start < nextTime) {
+                        nextTime = start
+                    }
+                }
+            }
+        }
+        return nextTime
+    }
+
     private fun seekImmediateNonCompletedSlot(playlist: Playlist, mediaItems: List<MediaItem>): Seek? {
+        if (playlist.type == Playlist.Type.ONLINE) {
+            return Seek(0, 0L)
+        }
         val start = playlist.getStartTime()
         if (start != null) {
             var currentItemStartTime = start.timeInMillis
             val now = Calendar.getInstance().timeInMillis
             mediaItems.forEachIndexed { i, mediaItem ->
                 val duration = getDuration(mediaItem.mediaId)
-                if ((currentItemStartTime + duration) > now) {
-                    return Seek(i, now - currentItemStartTime)
+                if ((currentItemStartTime + duration) > now || duration == 0L) {
+                    val seekTime = now - currentItemStartTime
+                    return Seek(i, if (seekTime < 0) 0L else seekTime)
                 }
                 currentItemStartTime += duration
             }
@@ -781,12 +867,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 Player.STATE_ENDED -> {
                     val playlist = playlistByIndex[it]
                     val isFiniteType = playlist.type == Playlist.Type.LOCAL_SEQUENCED ||
-                            playlist.type == Playlist.Type.LOCAL_RANDOMIZED
+                            playlist.type == Playlist.Type.LOCAL_RANDOMIZED ||
+                            playlist.isResuming()
                     val isAtLastItem = player?.currentMediaItemIndex == (programItems.size - 1)
 
                     // Only switch to fillers when a truly finite playlist finishes
                     if (isFiniteType && isAtLastItem) {
-                        Logger.log(AuditLog.Event.PLAYLIST_COMPLETED, "Playlist fully finished, switching to filler")
+                        val lastItemName = player?.currentMediaItemIndex?.let { programItems.getOrNull(it) }?.let { getMediaItemName(it) } ?: "Unknown"
+                        Logger.log(AuditLog.Event.PLAYLIST_EXHAUSTED, getPlayingAtIndexLabel(nowPlayingIndex), lastItemName)
                         switchNow(getSecondDefaultIndex(), false, this)
                         return
                     }
@@ -815,7 +903,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         nowPlayingIndex?.let {
             val isFiniteType = currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
-                    currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED
+                    currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED ||
+                    currentPlaylist?.isResuming() == true
 
             // ✅ We are *about to* play the final item — don't switch yet
             val aboutToPlayLast = nowProgramItem != null && nowProgramItem!! == programItems.size - 1
@@ -884,28 +973,67 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
             }
             is UnrecognizedInputFormatException -> {
-                if (player?.isCurrentWindowSeekable == true) {
-                    nowProgramItem?.plus(1)?.let { player!!.seekTo(it, 0) }
+                Logger.log(AuditLog.Event.ERROR, "Broken video format detected: ${currentItem?.mediaId}")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    handlePlaybackCrash(currentItem)
                 }
             }
             is MediaCodecRenderer.DecoderInitializationException -> {
+                Logger.log(AuditLog.Event.ERROR, "Decoder error on: ${currentItem?.mediaId}")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
+                    handlePlaybackCrash(currentItem)
                 }
             }
             else -> {
                 if (!player?.isPlaying!!) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        nowPlayingIndex?.let { switchNow(it, false, this) }  // Added context parameter
+                        handlePlaybackCrash(currentItem)
                     }
                 }
             }
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun handlePlaybackCrash(currentItem: MediaItem?) {
+        if (currentPlaylist?.type == Playlist.Type.ONLINE) {
+            if (nowPlayingIndex != getSecondDefaultIndex()) {
+                Logger.log(AuditLog.Event.ERROR, "Switching to filler due to broken stream.")
+                switchNow(getSecondDefaultIndex(), false, this)
+            } else {
+                nowPlayingIndex?.let { switchNow(it, false, this) }
+            }
+        } else if (player?.isCurrentWindowSeekable == true) {
+            Logger.log(AuditLog.Event.ERROR, "Skipping corrupted local file: ${currentItem?.mediaId}")
+            val nextItemIndex = (player?.currentMediaItemIndex ?: 0) + 1
+            if (nextItemIndex < programItems.size) {
+                player!!.seekTo(nextItemIndex, 0)
+            } else {
+                if (programItems.size <= 1) {
+                    Logger.log(AuditLog.Event.ERROR, "Only 1 item in folder and it crashed. Switching to filler to prevent infinite loop.")
+                    switchNow(getSecondDefaultIndex(), false, this)
+                } else {
+                    val isFiniteType = currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
+                            currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED ||
+                            currentPlaylist?.isResuming() == true
+                    if (isFiniteType) {
+                        val lastItemName = currentItem?.let { getMediaItemName(it) } ?: "Unknown"
+                        Logger.log(AuditLog.Event.PLAYLIST_EXHAUSTED, getPlayingAtIndexLabel(nowPlayingIndex), "Corrupted: $lastItemName")
+                        switchNow(getSecondDefaultIndex(), false, this)
+                    } else {
+                        player!!.seekTo(0, 0)
+                    }
+                }
+            }
+        } else if (nowPlayingIndex != getSecondDefaultIndex()) {
+            switchNow(getSecondDefaultIndex(), false, this)
+        }
+    }
+
 
     private fun getPlayingAtIndexLabel(index: Int?): String {
-        val playlistName = playlistByIndex[index?.let { getPlaylistIndex(it) }!!].name
+        if (index == null || index >= playlistByIndex.size) return "Unknown #$index"
+        val playlistName = playlistByIndex[getPlaylistIndex(index)].name
         return "$playlistName #$index"
     }
 
@@ -982,7 +1110,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun getDirectoryFromPlaylist(playlist: Playlist, i: Int): File {
-        return File(getPlaylistDirectory(playlist.isUsingExternalStorage) + File.separator + (playlist.urlOrFolder?.split("#")
+        return File(getPlaylistDirectory(playlist.isUsingExternalStorage) + File.separator + (playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)
             ?.get(i)
             ?.trim()))
     }
@@ -1510,6 +1638,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (getReInitializerFile().exists()) {
             getReInitializerFile().delete()
         }
+        cacheNowPlaying(false)
         maintenance?.run()
     }
 

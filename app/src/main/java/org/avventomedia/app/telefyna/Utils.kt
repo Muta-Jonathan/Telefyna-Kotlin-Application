@@ -3,38 +3,43 @@ package org.avventomedia.app.telefyna
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.media3.common.MediaItem
-import org.avventomedia.app.telefyna.audit.AuditLog
-import org.avventomedia.app.telefyna.audit.Logger
-import org.avventomedia.app.telefyna.modal.Playlist
 import java.io.BufferedReader
 import java.io.File
-import java.io.IOException
 import java.io.InputStreamReader
 import java.net.NetworkInterface
 import java.net.URL
 import java.util.concurrent.TimeUnit
-import kotlin.random.Random
+import org.avventomedia.app.telefyna.audit.AuditLog
+import org.avventomedia.app.telefyna.audit.Logger
+import org.avventomedia.app.telefyna.modal.Playlist
 
 object Utils {
+
+    const val COMMA_SPLITTER: String = ","
 
     @JvmStatic
     fun internetConnected(context: Context? = Monitor.instance): Boolean {
         return try {
             if (context != null) {
-                val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                val cm =
+                        context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as?
+                                android.net.ConnectivityManager
                 if (cm != null) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         val network = cm.activeNetwork
                         if (network == null) return false
                         val capabilities = cm.getNetworkCapabilities(network)
-                        if (capabilities == null || !capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                        if (capabilities == null ||
+                                        !capabilities.hasCapability(
+                                                android.net.NetworkCapabilities
+                                                        .NET_CAPABILITY_INTERNET
+                                        )
+                        ) {
                             return false
                         }
                     } else {
-                        @Suppress("DEPRECATION")
-                        val netInfo = cm.activeNetworkInfo
+                        @Suppress("DEPRECATION") val netInfo = cm.activeNetworkInfo
                         if (netInfo == null || !netInfo.isConnected) {
                             return false
                         }
@@ -51,7 +56,12 @@ object Utils {
         }
     }
 
-    fun setupLocalPrograms(programs: MutableList<MediaItem>, fileOrFolder: File, addedFirstItem: Boolean, playlist: Playlist) {
+    fun setupLocalPrograms(
+            programs: MutableList<MediaItem>,
+            fileOrFolder: File,
+            addedFirstItem: Boolean,
+            playlist: Playlist
+    ) {
         if (fileOrFolder.exists()) {
             val fileOrFolderList = fileOrFolder.listFiles() ?: return
 
@@ -65,17 +75,29 @@ object Utils {
                     setupLocalPrograms(programs, file, firstItemAdded, playlist)
                 } else if (validPlayableItem(file)) {
                     if (index == 0 && !firstItemAdded) { // First in the folder if not yet added
-                        programs.add(0, MediaItem.Builder().setUri(Uri.fromFile(file)).setMediaId(Uri.fromFile(file).toString()).build())
+                        programs.add(
+                                0,
+                                MediaItem.Builder()
+                                        .setUri(Uri.fromFile(file))
+                                        .setMediaId(Uri.fromFile(file).toString())
+                                        .build()
+                        )
                         firstItemAdded = true
                     } else {
-                        programs.add(MediaItem.Builder().setUri(Uri.fromFile(file)).setMediaId(Uri.fromFile(file).toString()).build())
+                        programs.add(
+                                MediaItem.Builder()
+                                        .setUri(Uri.fromFile(file))
+                                        .setMediaId(Uri.fromFile(file).toString())
+                                        .build()
+                        )
                     }
                 }
             }
 
             if (Playlist.Type.LOCAL_RANDOMIZED == playlist.type) {
-                // Shuffle the playlist using a fresh random seed to ensure better randomness and reduce repeat patterns
-                programs.shuffle(Random(System.nanoTime()))
+                // Shuffle the playlist using the default random seed to ensure better randomness
+                // and reduce repeat patterns
+                programs.shuffle()
             }
         }
     }
@@ -126,7 +148,8 @@ object Utils {
         return ips
     }
 
-    private val PLAYABLE_EXTENSIONS = listOf("mp4", "mkv", "avi", "mov", "ts", "webm", "png", "jpg", "jpeg", "webp", "gif")
+    private val PLAYABLE_EXTENSIONS =
+            listOf("mp4", "mkv", "avi", "mov", "ts", "webm", "png", "jpg", "jpeg", "webp", "gif")
 
     fun validPlayableItem(file: File): Boolean {
         if (!file.exists() || file.name.startsWith(".")) return false

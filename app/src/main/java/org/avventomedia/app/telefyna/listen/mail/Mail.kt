@@ -57,7 +57,7 @@ class Mail(private val auditAlert: AuditAlert) {
                 setFrom(InternetAddress(draft.from, draft.from))
 
                 // Process BCC recipients
-                receivers.emails.split("#").forEach { emailAdd ->
+                receivers.emails.split(Utils.COMMA_SPLITTER).forEach { emailAdd ->
                     val trimmedEmail = emailAdd.trim()
                     if (Utils.isValidEmail(trimmedEmail)) {
                         try {
@@ -117,7 +117,7 @@ class Mail(private val auditAlert: AuditAlert) {
             transport.close()
             Logger.log(AuditLog.Event.EMAIL, draft.subject, receivers.emails, "SUCCEEDED")
         } catch (e: Exception) {
-            Logger.log(AuditLog.Event.EMAIL, draft.subject, receivers.emails.replace("#", ", "), "FAILED with: ${e.message}")
+            Logger.log(AuditLog.Event.EMAIL, draft.subject, receivers.emails, "FAILED with: ${e.message}")
         }
     }
 

@@ -8,16 +8,16 @@ class TelefynaNewsTest {
 
     @Test
     fun testGetMessagesArray() {
-        // Test normal multi-line string
+        // Test normal multi-line string with ~~ separator
         var news = News().apply { 
-            messages = "Breaking News 1#Breaking News 2#Weather Update" 
+            messages = "Breaking News 1~~Breaking News 2~~Weather Update" 
         }
         var expected = arrayOf("Breaking News 1", "Breaking News 2", "Weather Update")
         assertArrayEquals(expected, news.getMessagesArray())
 
         // Test with trailing splitters
         news = News().apply { 
-            messages = "Message 1#Message 2##" 
+            messages = "Message 1~~Message 2~~~~" 
         }
         expected = arrayOf("Message 1", "Message 2")
         assertArrayEquals(expected, news.getMessagesArray())

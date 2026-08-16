@@ -9,7 +9,7 @@ data class Graphics(
     var lowerThirds: Array<LowerThird>? = null
 ) {
     companion object {
-        const val MESSAGE_SPLITTER: String = "#"
+        const val MESSAGE_SPLITTER: String = "~~"
     }
 
     enum class LogoPosition {

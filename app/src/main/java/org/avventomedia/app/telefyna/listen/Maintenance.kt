@@ -103,17 +103,47 @@ class Maintenance {
         val config = Monitor.instance?.configuration
 
         config?.let {
-            val playlists = it.playlists
+            val basePlaylists = it.playlists ?: emptyArray()
+            val schedules = it.schedules ?: emptyArray()
             val starts = mutableListOf<String>()
-            playlists?.forEachIndexed { index, playlist ->
-                playlist.schedule?.let { scheduleIndex ->
-                    playlist.schedule(playlists[scheduleIndex])
-                }
 
-                if (playlist.scheduledToday()) {
-                    schedulePlaylistAtStart(playlist, index, starts)
+            // Build a map of playlists by ID for O(1) lookup, and store their index for state saving
+            val playlistMap = mutableMapOf<String, Pair<Int, Playlist>>()
+            
+            var monitorIndex = 0
+            // Base playlists are also added to Monitor's list (for default fallback etc)
+            basePlaylists.forEachIndexed { index, playlist ->
+                if (playlist.id != null) {
+                    playlistMap[playlist.id!!] = Pair(monitorIndex, playlist)
                 }
                 Monitor.instance?.addPlayListByIndex(playlist)
+                monitorIndex++
+            }
+
+            schedules.forEachIndexed { index, schedule ->
+                val (baseIndex, basePlaylist) = playlistMap[schedule.playlistId] ?: return@forEachIndexed
+                // Create an in-memory Playlist instance to represent this schedule
+                val scheduledPlaylist = basePlaylist.copy().apply {
+                    this.start = schedule.start
+                    this.days = schedule.days
+                    this.dates = schedule.dates
+                    this.active = this.active && schedule.active
+                    this.schedule = baseIndex // Link to base playlist index for state saving
+                    this.id = "sched_${index}"
+                    if (schedule.name != null) this.name = schedule.name
+                    if (schedule.type != null) this.type = schedule.type!!
+                    if (schedule.color != null) this.color = schedule.color
+                    if (schedule.graphics != null) this.graphics = schedule.graphics
+                    if (schedule.emptyReplacer != null) this.emptyReplacer = schedule.emptyReplacer
+                    if (schedule.seekTo != null) this.seekTo = schedule.seekTo!!
+                }
+                
+                Monitor.instance?.addPlayListByIndex(scheduledPlaylist)
+
+                if (scheduledPlaylist.scheduledToday()) {
+                    schedulePlaylistAtStart(scheduledPlaylist, monitorIndex, starts)
+                }
+                monitorIndex++
             }
             playCurrentSlot()
         }
@@ -159,7 +189,7 @@ class Maintenance {
                     }
                 }
             } else {
-                it.urlOrFolder?.split("#")?.forEachIndexed { i, _ ->
+                it.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.forEachIndexed { i, _ ->
                     val pgms = mutableListOf<MediaItem>()
                     val localPlaylistFolder = Monitor.instance?.getDirectoryFromPlaylist(it, i)
                     if (localPlaylistFolder != null) {

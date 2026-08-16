@@ -101,6 +101,7 @@ graph TD
 ### Existing Backlog
 - [ ] Auto-installation of config under resources if non-existent at first run.
 - [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
+- [ ] Enhance resuming playlists (`LOCAL_RESUMING*`) to track the actual filename (`mediaId`) instead of just the index, preventing playlist resets or skipped episodes when files are added or removed from the folder.
 - [ ] Test if dates down the playlist overwrite the schedule.
 - [ ] Test playlist modification, etc.
 - [ ] Handle current play at switch not buffering video.
@@ -120,6 +121,9 @@ graph TD
 ## ✅ Solved Issues & Completed Updates
 
 ### 2026 - August
+- [x] **[SOLVED] Corrupted File Infinite Crash Loop:** Fixed a critical bug where decoder crashes on malformed local files (e.g. Invalid NAL length) would cause the playlist to aggressively loop and restart the same corrupted file indefinitely. The player now gracefully skips corrupted files, or safely switches to fillers if the folder is completely exhausted.
+- [x] **[SOLVED] Random Playlist Repetition:** Upgraded the random seed generation in `LOCAL_RANDOMIZED` from a predictable `System.nanoTime()` clock to the highly unpredictable `Random.Default`, permanently fixing the issue where shuffled playlists repeated identical daily sequences.
+- [x] **[SOLVED] Finite Resuming Playlist Loops:** Fixed a bug where finite resuming playlists (like `LOCAL_RESUMING_ONE`) were not fully tracked as finite. They now correctly log `PLAYLIST_EXHAUSTED` and switch to fallback fillers when their content finishes earlier than the scheduled time slot.
 - [x] **[SOLVED] Automated Testing & CI/CD:** Integrated a comprehensive JVM unit testing suite (MockK, JUnit) for core business logic (Scheduling, AuditLogs, Configs) and deployed automated GitHub Actions to verify tests on every Push and PR to `main`.
 
 ### 2026 - July
