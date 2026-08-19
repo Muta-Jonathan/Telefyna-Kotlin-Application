@@ -11,16 +11,14 @@
     <androidx.media3.ui.PlayerView
         android:id="@+id/player"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:layout_gravity="center"
         android:focusable="false"
         app:controller_layout_id="@layout/graphics"
         app:use_controller="true"
         app:show_timeout="0"
         app:hide_on_touch="false"
-        app:surface_type="surface_view"
-        android:animateLayoutChanges="true"
-        app:keep_content_on_player_reset="true"
+        app:surface_type="texture_view"
         app:resize_mode="fill"/>
 
 </androidx.appcompat.widget.LinearLayoutCompat>
