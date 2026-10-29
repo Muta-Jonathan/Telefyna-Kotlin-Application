@@ -39,8 +39,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
-import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -74,7 +72,6 @@ import java.io.FileWriter
 import java.io.IOException
 import java.io.UnsupportedEncodingException
 import java.net.URLDecoder
-import java.net.UnknownHostException
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -103,6 +100,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private val gson = GsonBuilder().setPrettyPrinting().create()
         private val possibleExtensions = listOf("webp", "png", "jpg", "gif")
         private val durationCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Long>>()
+        private const val RETRY_PREPARE_DELAY = 5000L
+        // PlaybackException.ERROR_CODE_IO_* (2000-2999)
+        private val IO_ERROR_CODES = 2000..2999
     }
 
     private var isMaintenanceStarted = false
@@ -136,7 +136,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var lowerThirdView: VideoView? = null
 
     private var lowerThirdLoop = 1
-    private var offAir = false
     private var fillingForLackOfInternet = false
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
@@ -145,8 +144,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     var dateFormat: SimpleDateFormat? = null
         private set
 
-    fun addPlayListByIndex(playlist: Playlist) {
-        playlistByIndex.add(playlist)
+    // Swap the whole table at once so player callbacks never see a half-built (or empty) schedule
+    fun replacePlaylists(playlists: List<Playlist>) {
+        playlistByIndex = playlists.toMutableList()
     }
 
     // This is the first default playlist, it plays whenever automation is disabled or nothing is scheduled/available
@@ -426,7 +426,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun initialise() {
-        playlistByIndex = mutableListOf()
         try {
             FileReader(getConfigFile()).use { reader ->
                 configuration = Gson().fromJson(BufferedReader(reader), Config::class.java)
@@ -460,13 +459,19 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         player = if (renderersFactory != null) {
             ExoPlayer.Builder(context, renderersFactory)
-                .setAudioAttributes(audioAttributes, true)
-                .setHandleAudioBecomingNoisy(true)
+                // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
+                // and hold wake + wifi locks so the stream isn't dropped by power saving
+                .setAudioAttributes(audioAttributes, false)
+                .setHandleAudioBecomingNoisy(false)
+                .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
                 .build()
         } else {
             ExoPlayer.Builder(context)
-                .setAudioAttributes(audioAttributes, true)
-                .setHandleAudioBecomingNoisy(true)
+                // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
+                // and hold wake + wifi locks so the stream isn't dropped by power saving
+                .setAudioAttributes(audioAttributes, false)
+                .setHandleAudioBecomingNoisy(false)
+                .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
                 .build()
         }
 
@@ -865,7 +870,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         nowPlayingIndex?.let {
             when (state) {
                 Player.STATE_ENDED -> {
-                    val playlist = playlistByIndex[it]
+                    val playlist = playlistByIndex.getOrNull(it) ?: return
                     val isFiniteType = playlist.type == Playlist.Type.LOCAL_SEQUENCED ||
                             playlist.type == Playlist.Type.LOCAL_RANDOMIZED ||
                             playlist.isResuming()
@@ -953,45 +958,46 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             return
         }
 
-        Logger.log(AuditLog.Event.ERROR, "${error.cause}: ${error.message}")
+        Logger.log(AuditLog.Event.ERROR, "${error.errorCodeName}: ${error.cause}: ${error.message}")
         currentPlaylist?.type?.name?.let { cacheNowPlaying(it.startsWith("LOCAL_RESUMING")) }
 
-        // keep reloading existing program if internet is on and off
-        when (error.cause?.cause) {
-            is UnknownHostException, is IOException -> {
+        // Classify by errorCode: the cause chain depth varies between data sources
+        when {
+            error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> {
+                // Routine HLS/DASH hiccup: rejoin the live edge instead of leaving the stream
+                Logger.log(AuditLog.Event.ERROR, "Fell behind live window, rejoining live edge")
+                player?.seekToDefaultPosition()
+                player?.prepare()
+            }
+            currentPlaylist?.type == Playlist.Type.ONLINE && error.errorCode in IO_ERROR_CODES -> {
                 Logger.log(AuditLog.Event.NO_INTERNET, "Failing to play program because of no internet connection")
                 failedBecauseOfInternetIndex = nowPlayingIndex
-                
+
                 // Fall back to fillers if the internet goes down, but only if fillers are actually installed
                 // (to prevent an infinite loop of bouncing between the online stream and empty fillers)
-                if (nowPlayingIndex != getSecondDefaultIndex()) {
-                    val fillersPlaylist = configuration?.playlists?.getOrNull(getSecondDefaultIndex())
-                    if (fillersPlaylist != null && maintenance?.retrievePrograms(fillersPlaylist)?.isNotEmpty() == true) {
-                        fillingForLackOfInternet = true
-                        switchNow(getSecondDefaultIndex(), false, this)
-                    }
-                }
-            }
-            is UnrecognizedInputFormatException -> {
-                Logger.log(AuditLog.Event.ERROR, "Broken video format detected: ${currentItem?.mediaId}")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    handlePlaybackCrash(currentItem)
-                }
-            }
-            is MediaCodecRenderer.DecoderInitializationException -> {
-                Logger.log(AuditLog.Event.ERROR, "Decoder error on: ${currentItem?.mediaId}")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    handlePlaybackCrash(currentItem)
+                val fillersPlaylist = configuration?.playlists?.getOrNull(getSecondDefaultIndex())
+                if (nowPlayingIndex != getSecondDefaultIndex() && fillersPlaylist != null &&
+                    maintenance?.retrievePrograms(fillersPlaylist)?.isNotEmpty() == true) {
+                    fillingForLackOfInternet = true
+                    switchNow(getSecondDefaultIndex(), false, this)
+                } else {
+                    retryPrepareLater()
                 }
             }
             else -> {
-                if (!player?.isPlaying!!) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        handlePlaybackCrash(currentItem)
-                    }
-                }
+                Logger.log(AuditLog.Event.ERROR, "Unplayable item: ${currentItem?.mediaId}")
+                handlePlaybackCrash(currentItem)
             }
         }
+    }
+
+    // A failed player sits in STATE_IDLE until prepared again; retry instead of waiting for the KeepOnAir watchdog
+    private fun retryPrepareLater() {
+        handler?.postDelayed({
+            if (player?.playbackState == Player.STATE_IDLE) {
+                player?.prepare()
+            }
+        }, RETRY_PREPARE_DELAY)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -1003,11 +1009,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             } else {
                 nowPlayingIndex?.let { switchNow(it, false, this) }
             }
-        } else if (player?.isCurrentWindowSeekable == true) {
+        } else if (currentPlaylist?.type != Playlist.Type.ONLINE) {
+            // Local playlist: skip the bad file and carry on with the rest of the programme. A file that failed to parse
+            // is never "seekable", so gating on seekability sent the whole playlist to fillers over one bad file.
             Logger.log(AuditLog.Event.ERROR, "Skipping corrupted local file: ${currentItem?.mediaId}")
             val nextItemIndex = (player?.currentMediaItemIndex ?: 0) + 1
             if (nextItemIndex < programItems.size) {
                 player!!.seekTo(nextItemIndex, 0)
+                player!!.prepare()
             } else {
                 if (programItems.size <= 1) {
                     Logger.log(AuditLog.Event.ERROR, "Only 1 item in folder and it crashed. Switching to filler to prevent infinite loop.")
@@ -1022,11 +1031,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         switchNow(getSecondDefaultIndex(), false, this)
                     } else {
                         player!!.seekTo(0, 0)
+                        player!!.prepare()
                     }
                 }
             }
         } else if (nowPlayingIndex != getSecondDefaultIndex()) {
             switchNow(getSecondDefaultIndex(), false, this)
+        } else {
+            retryPrepareLater()
         }
     }
 
@@ -1072,13 +1084,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         maintenanceHandler?.removeCallbacksAndMessages(null)
         handler?.removeCallbacksAndMessages(null)
-        // Cancel keepOnAir alarm
-        val intent = Intent(KEEP_ON_AIR_ACTION)
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager?.cancel(pendingIntent)
+        // Deliberately keep the KeepOnAir alarm armed: it is what relaunches Telefyna if the Activity is gone
 
         Glide.get(this).clearMemory()
         Glide.get(this).trimMemory(TRIM_MEMORY_COMPLETE)
@@ -1126,6 +1132,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             if (!isMaintenanceStarted) {
                 isMaintenanceStarted = true
                 maintenance?.run()
+                scheduleKeepOnAir() // arm the watchdog even if nothing could be put on air
             }
         } else if (isAndroidTV()) {
             // Android TV / Google TV has no Settings UI for MANAGE_EXTERNAL_STORAGE.
@@ -1135,6 +1142,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             if (!isMaintenanceStarted) {
                 isMaintenanceStarted = true
                 maintenance?.run()
+                scheduleKeepOnAir()
             }
         } else {
             askForPermissions(missing)
@@ -1586,11 +1594,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager?.cancel(pendingIntent)
-        alarmManager?.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + delay,
-            pendingIntent
-        )
+        alarmManager?.let { Utils.setExactAlarm(it, System.currentTimeMillis() + delay, pendingIntent) }
     }
 
 
@@ -1648,41 +1652,46 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
      */
     @RequiresApi(Build.VERSION_CODES.O)
     fun handleKeepOnAir() {
-        when {
-            getRebootFile().exists() -> {
-                getRebootFile().delete()
-                rebootDevice()
-            }
-            getRestartFile().exists() -> {
-                getRestartFile().delete()
-                restartApp()
-            }
-            getReInitializerFile().exists() -> {
-                performRealtimeConfigReload()
-                scheduleKeepOnAir()
-            }
-            else -> {
-                if (getBackupConfigFile().exists()) backupConfig(false)
-                if (getBackupConfigResetFile().exists()) backupConfig(true)
+        // Re-arm first so no branch below (failed reboot, exception, early return) can stop the heartbeat
+        scheduleKeepOnAir()
+        try {
+            when {
+                getRebootFile().exists() -> {
+                    getRebootFile().delete()
+                    rebootDevice()
+                }
+                getRestartFile().exists() -> {
+                    getRestartFile().delete()
+                    restartApp()
+                }
+                getReInitializerFile().exists() -> performRealtimeConfigReload()
+                else -> {
+                    if (getBackupConfigFile().exists()) backupConfig(false)
+                    if (getBackupConfigResetFile().exists()) backupConfig(true)
 
-                if (nowPlayingIndex == getSecondDefaultIndex() &&
-                    fillingForLackOfInternet &&
-                    Utils.internetConnected() &&
-                    failedBecauseOfInternetIndex != null) {
-                    fillingForLackOfInternet = false
-                    Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                    switchNow(failedBecauseOfInternetIndex!!, false, this)
-                    failedBecauseOfInternetIndex = null
-                } else {
-                    offAir = player == null || !player!!.isPlaying
-                    if (offAir) {
-                        offAir = false
+                    val failedIndex = failedBecauseOfInternetIndex
+                    if (nowPlayingIndex == getSecondDefaultIndex() &&
+                        fillingForLackOfInternet &&
+                        failedIndex != null &&
+                        Utils.internetConnected()) {
+                        fillingForLackOfInternet = false
+                        failedBecauseOfInternetIndex = null
+                        Logger.log(AuditLog.Event.INTERNET_RESTORED)
+                        switchNow(failedIndex, false, this)
+                    } else if (player == null || !player!!.isPlaying) {
                         Logger.log(AuditLog.Event.STUCK, (configuration?.wait ?: 0).toLong())
-                        switchNow(nowPlayingIndex!!, false, this)
+                        val index = nowPlayingIndex
+                        if (index != null) {
+                            switchNow(index, false, this)
+                        } else {
+                            // Nothing was ever put on air (e.g. config missing or unreadable): retry loading it
+                            maintenance?.run()
+                        }
                     }
-                    scheduleKeepOnAir() // Schedule the next execution
                 }
             }
+        } catch (e: Exception) {
+            Logger.log(AuditLog.Event.ERROR, "KeepOnAir check failed: ${e.message}")
         }
     }
 }
