@@ -90,7 +90,8 @@ data class Playlist(
         if (!active || start.isNullOrBlank()) {
             return false
         } else if (days.isNullOrEmpty()) {
-            return true
+            // No weekdays: runs daily unless restricted to specific dates
+            return dates.isNullOrEmpty() || dates!!.contains(SimpleDateFormat(DATE_FORMAT).format(Calendar.getInstance().time))
         }
         val now = Calendar.getInstance()
         val dateFormat = SimpleDateFormat(DATE_FORMAT)
