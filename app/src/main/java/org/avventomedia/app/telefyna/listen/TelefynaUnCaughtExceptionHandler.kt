@@ -38,6 +38,7 @@ class TelefynaUnCaughtExceptionHandler : Thread.UncaughtExceptionHandler {
             Logger.log(AuditLog.Event.ERROR, "${ex::class.simpleName}: ${ex.message}")
         }
 
+        context?.let { Monitor.recordCrash(it) } // feeds crash-loop safe mode on the next start
         context?.restartApp()
     }
 

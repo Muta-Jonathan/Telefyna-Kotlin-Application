@@ -25,6 +25,10 @@ class AuditLog {
         BACK_UP("Running backup"),
         RESTARTING("Restarting Telefyna"),
         TIME_CHANGED("Time changed"),
+        SLATE_ON("Showing emergency slate: %s"),
+        SLATE_OFF("Emergency slate cleared, back on air"),
+        SAFE_MODE("Crash loop: %d crashes in %d minutes, starting in safe mode %s"),
+        SAFE_MODE_OFF("No crash for %d minutes, leaving safe mode"),
 
         // scheduler
         PLAYLIST("$SPLITTER[ Preparing to play playlist: %s: %s"),
@@ -67,7 +71,7 @@ class AuditLog {
                 HEARTBEAT, KEY_PRESS, CONFIGURATION, MAINTENANCE,
                 METRICS, ERROR, CACHE_NOW_PLAYING_RESUME, RETRIEVE_NOW_PLAYING_RESUME,
                 STUCK, INTERNET_RESTORED, EMPTY_FILLERS, CRASH, BACK_UP,
-                RESTARTING, TIME_CHANGED
+                RESTARTING, TIME_CHANGED, SLATE_ON, SLATE_OFF, SAFE_MODE, SAFE_MODE_OFF
             )
             val schedulers = arrayOf(
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,

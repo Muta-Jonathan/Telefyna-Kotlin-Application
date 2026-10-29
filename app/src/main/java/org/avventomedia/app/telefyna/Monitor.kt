@@ -103,7 +103,36 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private val gson = GsonBuilder().setPrettyPrinting().create()
         private val possibleExtensions = listOf("webp", "png", "jpg", "gif")
         private val durationCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Long>>()
+
+        // Crash-loop safe mode
+        private const val CRASH_TIMES = "CRASH_TIMES"
+        private const val CRASH_WINDOW_MINUTES = 10
+        private const val FILLERS_ONLY_CRASHES = 3
+        private const val SLATE_ONLY_CRASHES = 5
+        private const val SAFE_MODE_MINUTES = 15L
+
+        /** Records a crash time synchronously (the process is about to die), keeping only the crash window. */
+        fun recordCrash(context: Context) {
+            val prefs = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            val times = recentCrashes(prefs) + System.currentTimeMillis()
+            prefs.edit().putString(CRASH_TIMES, times.joinToString(",")).commit()
+        }
+
+        private fun recentCrashes(prefs: SharedPreferences): List<Long> {
+            val since = System.currentTimeMillis() - CRASH_WINDOW_MINUTES * 60_000L
+            return prefs.getString(CRASH_TIMES, "").orEmpty().split(",")
+                .mapNotNull { it.toLongOrNull() }.filter { it >= since }
+        }
     }
+
+    enum class SafeMode { OFF, FILLERS_ONLY, SLATE_ONLY }
+
+    /** Set at startup when Telefyna keeps crashing: airs only fillers (or only the slate) without schedules or graphics. */
+    var safeMode = SafeMode.OFF
+        private set
+    private var slateShown = false
+    // Guards emptyReplacer chains (A -> B -> A) from recursing forever
+    private var emptyHops = 0
 
     private var isMaintenanceStarted = false
     private var activeLogoState: String? = null
@@ -303,6 +332,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         maintenanceHandler = Handler()
         handler = Handler()
         sharedPreferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+        evaluateSafeMode()
 
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -500,7 +530,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun playTheSame(index: Int): Boolean {
-        return player?.isPlaying == false && samePlaylistPlaying(index)
+        // Also when no player was ever built (e.g. the slate is up because the playlist was empty): retry it
+        return player?.isPlaying != true && samePlaylistPlaying(index)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -553,9 +584,19 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
                 if (programItems.isEmpty()) {
                     Logger.log(AuditLog.Event.PLAYLIST_EMPTY_PLAY, getPlayingAtIndexLabel(nowPlayingIndex))
-                    switchNow(currentPlaylist!!.emptyReplacer ?: firstDefaultIndex, isCurrentSlot, context)
+                    val replacer = currentPlaylist!!.emptyReplacer ?: firstDefaultIndex
+                    if (replacer == index || emptyHops >= playlistByIndex.size) {
+                        // Nothing anywhere to fall back to: put up the slate instead of a black screen.
+                        // KeepOnAir keeps retrying this playlist, so playout resumes once media appears.
+                        emptyHops = 0
+                        showSlate("Nothing to play in ${getPlayingAtIndexLabel(index)} or its fallbacks")
+                        return
+                    }
+                    emptyHops++
+                    switchNow(replacer, isCurrentSlot, context)
                     return
                 }
+                emptyHops = 0
 
                 if (player == null) {
                     player = buildPlayer(context)
@@ -757,6 +798,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
+        if (isPlaying) {
+            hideSlate()
+        }
         val playerView = getPlayerView(false)
         val current = playerView.player
         if (current == null || player != current) { // Change of player is proof of a switch
@@ -1256,6 +1300,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     @RequiresApi(Build.VERSION_CODES.M)
     private fun triggerGraphics(nowPosition: Long) {
+        if (safeMode != SafeMode.OFF) return // graphics may be what keeps crashing
         val graphics = currentPlaylist?.graphics
 
         // Calculate new logo state
@@ -1594,6 +1639,58 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
 
+
+    /**
+     * Full-screen "We'll be right back" card so viewers never get a black screen. Uses the operator's
+     * <telefyna>/slate.(png|jpg|webp|gif) when present, otherwise the built-in card.
+     */
+    fun showSlate(reason: String) {
+        runOnUiThread {
+            if (!slateShown) {
+                Logger.log(AuditLog.Event.SLATE_ON, reason)
+            }
+            slateShown = true
+            player?.stop() // free the decoder and silence any frozen audio
+            val slateFile = possibleExtensions
+                .map { File("${getProgramsFolderPath(false)}${File.separator}slate.$it") }
+                .firstOrNull { it.exists() }
+            val slateImage: ImageView = findViewById(R.id.slateImage)
+            if (slateFile != null) {
+                Glide.with(this).load(slateFile).skipMemoryCache(true).into(slateImage)
+                slateImage.visibility = View.VISIBLE
+                findViewById<View>(R.id.slateDefault).visibility = View.GONE
+            } else {
+                slateImage.visibility = View.GONE
+                findViewById<View>(R.id.slateDefault).visibility = View.VISIBLE
+            }
+            findViewById<View>(R.id.slate).visibility = View.VISIBLE
+        }
+    }
+
+    private fun hideSlate() {
+        if (!slateShown) return
+        slateShown = false
+        findViewById<View>(R.id.slate).visibility = View.GONE
+        Logger.log(AuditLog.Event.SLATE_OFF)
+    }
+
+    private fun evaluateSafeMode() {
+        val crashes = recentCrashes(sharedPreferences).size
+        safeMode = when {
+            crashes >= SLATE_ONLY_CRASHES -> SafeMode.SLATE_ONLY
+            crashes >= FILLERS_ONLY_CRASHES -> SafeMode.FILLERS_ONLY
+            else -> SafeMode.OFF
+        }
+        if (safeMode == SafeMode.OFF) return
+        Logger.log(AuditLog.Event.SAFE_MODE, crashes, CRASH_WINDOW_MINUTES, safeMode.name)
+        // Leave safe mode after a quiet period: forget the crashes and run the normal schedule again
+        handler?.postDelayed({
+            sharedPreferences.edit().remove(CRASH_TIMES).apply()
+            safeMode = SafeMode.OFF
+            Logger.log(AuditLog.Event.SAFE_MODE_OFF, SAFE_MODE_MINUTES)
+            maintenance?.run()
+        }, SAFE_MODE_MINUTES * 60_000L)
+    }
 
     private fun rebootDevice() {
         try {

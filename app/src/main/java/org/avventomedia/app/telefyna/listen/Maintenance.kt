@@ -42,6 +42,24 @@ class Maintenance {
     fun triggerMaintenance() {
         cancelPendingIntents()
         Monitor.instance?.initialise()
+        val monitor = Monitor.instance ?: return
+        if (monitor.configuration == null) {
+            monitor.showSlate("No usable configuration")
+            return
+        }
+        when (monitor.safeMode) {
+            Monitor.SafeMode.SLATE_ONLY -> {
+                monitor.showSlate("Safe mode: repeated crashes")
+                return
+            }
+            Monitor.SafeMode.FILLERS_ONLY -> {
+                // No schedules, alarms or graphics: just keep fillers on air until safe mode expires
+                monitor.configuration?.playlists?.forEach { monitor.addPlayListByIndex(it) }
+                monitor.switchNow(monitor.getSecondDefaultIndex(), false, monitor)
+                return
+            }
+            Monitor.SafeMode.OFF -> {}
+        }
         // Switch to firstDefault when automation is turned off
         if (Monitor.instance?.configuration?.isAutomationDisabled == true) {
             val defaultIndex = Monitor.instance!!.getFirstDefaultIndex()
