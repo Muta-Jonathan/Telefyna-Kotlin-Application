@@ -38,6 +38,7 @@ class TelefynaUnCaughtExceptionHandler : Thread.UncaughtExceptionHandler {
             Logger.log(AuditLog.Event.ERROR, "${ex::class.simpleName}: ${ex.message}")
         }
 
+        Logger.flush()
         context?.restartApp()
     }
 
