@@ -18,12 +18,32 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 
 class Logger {
     companion object {
         @SuppressLint("SimpleDateFormat")
         private val datetimeFormat = SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
+        // High-frequency bookkeeping events: logged, but one email each would flood inboxes and trip SMTP rate limits
+        private val NOT_EMAILED = setOf(
+            AuditLog.Event.KEY_PRESS,
+            AuditLog.Event.CACHE_NOW_PLAYING_RESUME,
+            AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME
+        )
+
+        // Single writer thread: keeps disk I/O off the main thread while preserving log order
+        private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "telefyna-audit-writer") }
+
+        /** Waits for queued log lines to reach disk; call before the process is killed. */
+        fun flush(timeoutMillis: Long = 2000) {
+            try {
+                writer.submit {}.get(timeoutMillis, TimeUnit.MILLISECONDS)
+            } catch (e: Exception) {
+                Log.e("WRITING_AUDIT_ERROR", "Flush timed out: ${e.message}")
+            }
+        }
 
         /*
          * TODO mail, save to file
@@ -59,11 +79,13 @@ class Logger {
             if (!path.isNullOrBlank()) {
                 val file = File(path)
                 val msg = String.format("%s %s: \n\t%s\n\n", getNow(), event.name, message)
-                try {
-                    // Always append log entries so logs are never deleted or overwritten
-                    FileUtils.writeStringToFile(file, msg.replace("<br>", ","), StandardCharsets.UTF_8, true)
-                } catch (e: IOException) {
-                    Log.e("WRITING_AUDIT_ERROR", e.message ?: "Error writing audit")
+                writer.execute {
+                    try {
+                        // Always append log entries so logs are never deleted or overwritten
+                        FileUtils.writeStringToFile(file, msg.replace("<br>", ","), StandardCharsets.UTF_8, true)
+                    } catch (e: IOException) {
+                        Log.e("WRITING_AUDIT_ERROR", e.message ?: "Error writing audit")
+                    }
                 }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -76,7 +98,7 @@ class Logger {
         private fun emailAudit(event: AuditLog.Event, msg: String) {
             // email notification
             val config = Monitor.instance?.configuration
-            if (config != null && config.alerts?.isEnabled== true && (event.getCategory() == AuditLog.Event.Category.ADMIN || event.getCategory() == AuditLog.Event.Category.BROADCAST)) {
+            if (config != null && config.alerts?.isEnabled== true && event !in NOT_EMAILED && (event.getCategory() == AuditLog.Event.Category.ADMIN || event.getCategory() == AuditLog.Event.Category.BROADCAST)) {
                 if (Utils.internetConnected()) {
                     SendEmail().execute(AuditAlert(config.alerts!!, event, msg))
                 } else {
@@ -86,7 +108,8 @@ class Logger {
         }
 
         private fun getNow(): String {
-            return datetimeFormat.format(Calendar.getInstance().time)
+            // SimpleDateFormat is not thread-safe and logging happens from several threads
+            return synchronized(datetimeFormat) { datetimeFormat.format(Calendar.getInstance().time) }
         }
 
         @OptIn(UnstableApi::class)
@@ -96,29 +119,37 @@ class Logger {
 
         @OptIn(UnstableApi::class)
         fun getAuditsForNDays(days: Int): List<String> {
-            val audits = mutableListOf<String>()
-            val auditDir = File(Monitor.instance?.getAuditFilePath(Monitor.instance!!,"") ?: "")
-            if (auditDir.exists()) {
-                val auditContents = auditDir.listFiles()
-                if (auditContents != null && auditContents.isNotEmpty()) {
-                    for (i in 0 until days) {
-                        val audit: String
-                        audit = if (i == 0) ({
-                            Monitor.instance?.getAuditLogsFilePath(getToday())
-                        }).toString() else ({
-                            val d = Calendar.getInstance().apply {
-                                add(Calendar.DAY_OF_YEAR, -i) // - one day
-                            }
-                            Monitor.instance?.dateFormat?.let {
-                                Monitor.instance!!.getAuditLogsFilePath(
-                                    it.format(d.time))
-                            }
-                        }).toString()
-                        audits.add(audit)
-                    }
+            val monitor = Monitor.instance ?: return emptyList()
+            val dateFormat = monitor.dateFormat ?: return emptyList()
+            return (0 until days).map { i ->
+                val day = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -i) }
+                monitor.getAuditLogsFilePath(dateFormat.format(day.time))
+            }
+        }
+
+        /**
+         * Deletes daily audit logs (yyyy-MM-dd.log) dated more than [keepDays] days before [today], so a box running
+         * for months doesn't fill its storage. Files that don't follow the daily naming are left alone.
+         */
+        fun pruneOldLogs(dir: File, keepDays: Int, today: Calendar = Calendar.getInstance()): List<File> {
+            if (keepDays <= 0) return emptyList()
+            val format = SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ENGLISH).apply { isLenient = false }
+            val cutoff = (today.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, -keepDays)
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }.time
+            val deleted = mutableListOf<File>()
+            dir.listFiles { f -> f.isFile && f.name.endsWith(AuditLog.ENDPOINT) }?.forEach { file ->
+                val date = try {
+                    format.parse(file.name.removeSuffix(AuditLog.ENDPOINT))
+                } catch (e: java.text.ParseException) {
+                    null
+                }
+                if (date != null && date.before(cutoff) && file.delete()) {
+                    deleted.add(file)
                 }
             }
-            return audits
+            return deleted
         }
 
         fun getOsKillReason(context: Context): String {

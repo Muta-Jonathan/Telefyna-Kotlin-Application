@@ -13,6 +13,8 @@ data class Config(
     var notificationsDisabled: Boolean = true,
     // seconds to keep checking on player, wait on internet
     var wait: Int = 30,
+    // days of daily audit logs to keep on the device; 0 keeps everything
+    var auditRetentionDays: Int = 60,
     var alerts: Alerts? = null,
     var playlists: Array<Playlist>? = null,
     var schedules: Array<Schedule>? = null

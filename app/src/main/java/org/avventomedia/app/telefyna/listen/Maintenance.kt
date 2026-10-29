@@ -1,34 +1,25 @@
 package org.avventomedia.app.telefyna.listen
 
-import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.webkit.MimeTypeMap
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.rtmp.RtmpDataSource
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import org.avventomedia.app.telefyna.Metrics
 import org.avventomedia.app.telefyna.Monitor
 import org.avventomedia.app.telefyna.Utils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
 import org.avventomedia.app.telefyna.modal.Playlist
-import org.avventomedia.app.telefyna.player.SrtDataSourceFactory
-import org.avventomedia.app.telefyna.player.TsOnlyExtractorFactory
 import java.util.Calendar
 
 class Maintenance {
     companion object {
-        private const val QUERY_PARAM_PASSCODE = "passcode"
+        private const val MIN_PLAUSIBLE_YEAR = 2025
     }
 
     private var startedSlotsToday: MutableMap<String, CurrentPlaylist> = HashMap()
@@ -46,17 +37,24 @@ class Maintenance {
         if (Monitor.instance?.configuration?.isAutomationDisabled == true) {
             val defaultIndex = Monitor.instance!!.getFirstDefaultIndex()
             val playlist = Monitor.instance?.configuration?.playlists?.get(defaultIndex)
-            playlist?.let { Monitor.instance!!.addPlayListByIndex(it) }
+            Monitor.instance!!.replacePlaylists(listOfNotNull(playlist))
             Monitor.instance!!.switchNow(defaultIndex, false, Monitor.instance!!)
         } else {
             startedSlotsToday = HashMap()
             pendingIntents = HashMap()
+            Logger.log(AuditLog.Event.MAINTENANCE)
+            schedule()
+            // Metrics do network calls; keep them off the main thread and out of the scheduling path
             Thread {
                 Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
-                Logger.log(AuditLog.Event.MAINTENANCE)
-                
-                Handler(Looper.getMainLooper()).post {
-                    schedule()
+                // Old daily logs are pruned off the main thread too
+                Monitor.instance?.let { monitor ->
+                    val keepDays = monitor.configuration?.auditRetentionDays ?: 0
+                    val auditDir = java.io.File(monitor.getAuditFilePath(monitor, ""))
+                    val deleted = Logger.pruneOldLogs(auditDir, keepDays)
+                    if (deleted.isNotEmpty()) {
+                        Logger.log(AuditLog.Event.MAINTENANCE_CLEANUP, deleted.size, keepDays)
+                    }
                 }
             }.start()
         }
@@ -81,16 +79,21 @@ class Maintenance {
             monitorInstance, 1, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        monitorInstance.alarmManager?.setExact(
-            AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + millisToMaintenance,
-            pendingIntent
-        )
+        monitorInstance.alarmManager?.let {
+            Utils.setExactAlarm(it, System.currentTimeMillis() + millisToMaintenance, pendingIntent)
+        }
     }
 
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     fun run() {
+        Monitor.instance?.let {
+            DateChange.rememberClock(it)
+            if (Calendar.getInstance()[Calendar.YEAR] < MIN_PLAUSIBLE_YEAR) {
+                // RTC-less box before NTP sync; DateChange reschedules once the clock is corrected
+                Logger.log(AuditLog.Event.ERROR, "Device clock looks unset: ${Calendar.getInstance().time}")
+            }
+        }
         // This may cause a null pointer exception if config is not available and restarts it
         triggerMaintenance()
         Logger.log(AuditLog.Event.HEARTBEAT, "ON")
@@ -110,13 +113,14 @@ class Maintenance {
             // Build a map of playlists by ID for O(1) lookup, and store their index for state saving
             val playlistMap = mutableMapOf<String, Pair<Int, Playlist>>()
             
+            val newPlaylists = mutableListOf<Playlist>()
             var monitorIndex = 0
             // Base playlists are also added to Monitor's list (for default fallback etc)
             basePlaylists.forEachIndexed { index, playlist ->
                 if (playlist.id != null) {
                     playlistMap[playlist.id!!] = Pair(monitorIndex, playlist)
                 }
-                Monitor.instance?.addPlayListByIndex(playlist)
+                newPlaylists.add(playlist)
                 monitorIndex++
             }
 
@@ -138,13 +142,14 @@ class Maintenance {
                     if (schedule.seekTo != null) this.seekTo = schedule.seekTo!!
                 }
                 
-                Monitor.instance?.addPlayListByIndex(scheduledPlaylist)
+                newPlaylists.add(scheduledPlaylist)
 
                 if (scheduledPlaylist.scheduledToday()) {
                     schedulePlaylistAtStart(scheduledPlaylist, monitorIndex, starts)
                 }
                 monitorIndex++
             }
+            Monitor.instance?.replacePlaylists(newPlaylists)
             playCurrentSlot()
         }
     }
@@ -154,40 +159,8 @@ class Maintenance {
         val programs = mutableListOf<MediaItem>()
         playlist?.let {
             if (it.type == Playlist.Type.ONLINE) {
-                when {
-                    it.urlOrFolder?.contains("rtmp://") == true -> {
-                        // Handle RTMP with custom media source
-                        val mediaSource = getRtmpSource(Uri.parse(it.urlOrFolder))
-                        programs.add(mediaSource.mediaItem)
-                    }
-                    it.urlOrFolder?.contains("srt://") == true -> {
-                        // Handle SRT
-                        val srtUrl = Uri.parse(it.urlOrFolder)
-                        val passcode = srtUrl.getQueryParameter(QUERY_PARAM_PASSCODE)
-
-                        // Create MediaItem with custom cache key (passcode if present)
-                        val mediaItemBuilder = MediaItem.Builder()
-                            .setUri(srtUrl)
-                        // Set custom cache key if passcode is present
-                        if (!passcode.isNullOrEmpty()) {
-                            mediaItemBuilder.setCustomCacheKey(passcode) // Use passcode as custom cache key
-                        }
-
-                        val mediaItem = mediaItemBuilder.build()
-
-                        // Create SRT source and add to programs
-                        val mediaSource = getSrtSource(mediaItem)
-                        programs.add(mediaSource.mediaItem)
-                    }
-                    else -> {
-                        // Handle HLS, RTSP, and Smooth Streaming (default behavior)
-                        it.urlOrFolder?.let { url ->
-                            MediaItem.fromUri(url).let { mediaItem ->
-                                programs.add(mediaItem)
-                            }
-                        }
-                    }
-                }
+                // HLS, DASH, RTSP, RTMP and SRT are all resolved by the player's SchemeRoutingDataSource
+                it.urlOrFolder?.trim()?.let { url -> programs.add(MediaItem.fromUri(url)) }
             } else {
                 it.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.forEachIndexed { i, _ ->
                     val pgms = mutableListOf<MediaItem>()
@@ -203,21 +176,6 @@ class Maintenance {
             }
         }
         return programs
-    }
-
-    // Support Rtmp stream "rtmp//server:port" or "rtmp//server"
-    @OptIn(UnstableApi::class)
-    private fun getRtmpSource(uri: Uri): MediaSource {
-        val rtmpDataSourceFactory = RtmpDataSource.Factory()
-        return ProgressiveMediaSource.Factory(rtmpDataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(uri))
-    }
-
-    // Support srt stream "srt//server:port" or "srt//server"
-    @OptIn(UnstableApi::class)
-    private fun getSrtSource(mediaItem: MediaItem): MediaSource {
-       return ProgressiveMediaSource.Factory(SrtDataSourceFactory(), TsOnlyExtractorFactory())
-           .createMediaSource(mediaItem)
     }
 
     @OptIn(UnstableApi::class)
@@ -241,10 +199,15 @@ class Maintenance {
     @RequiresApi(Build.VERSION_CODES.O)
     private fun playCurrentSlot() {
         if (startedSlotsToday.isNotEmpty()) {
-            val slots = startedSlotsToday.keys.toList().sortedDescending()
+            // Latest started slot wins; compare as minutes ("9:00" sorts after "10:00" as a string)
+            val slots = startedSlotsToday.keys.toList().sortedByDescending { startMinutes(it) }
             val currentPlaylist = startedSlotsToday[slots[0]]
             // isCurrentSlot should only be true here
             Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, Monitor.instance!!)
+        } else if (Monitor.instance?.isPlayingScheduledSlot() == true) {
+            // Midnight maintenance before today's first slot: let yesterday's programme run to its end
+            // (finite playlists hand over to fillers on completion) instead of cutting it at 00:00
+            Logger.log(AuditLog.Event.PLAYLIST_CARRY_OVER, Monitor.instance!!.getNowPlayingLabel())
         } else { // Play first default
             Monitor.instance?.let { Monitor.instance!!.switchNow(it.getFirstDefaultIndex(), false, Monitor.instance!!) }
         }
@@ -268,7 +231,12 @@ class Maintenance {
         val alarmPendingIntent = PendingIntent.getBroadcast(Monitor.instance, index, intent,
             PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         pendingIntents[start] = alarmPendingIntent
-        Monitor.instance?.alarmManager?.setExact(AlarmManager.RTC_WAKEUP, millis, alarmPendingIntent)
+        Monitor.instance?.alarmManager?.let { Utils.setExactAlarm(it, millis, alarmPendingIntent) }
+    }
+
+    private fun startMinutes(start: String): Int {
+        val parts = start.split(":")
+        return (parts[0].trim().toIntOrNull() ?: 0) * 60 + (parts.getOrNull(1)?.trim()?.toIntOrNull() ?: 0)
     }
 
     /*

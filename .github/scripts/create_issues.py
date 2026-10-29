@@ -7,22 +7,30 @@ import ssl
 import os
 
 def get_existing_issues(token, repo, ctx):
-    """Fetch existing issues (open and closed) to prevent duplicates and update tags."""
-    url = f"https://api.github.com/repos/{repo}/issues?state=all&per_page=100"
+    """Fetch all existing issues (open and closed, every page) to prevent duplicates and update tags."""
     headers = {
         "Authorization": f"token {token}",
         "Accept": "application/vnd.github.v3+json",
     }
-    req = urllib.request.Request(url, headers=headers)
     existing_issues = {}
-    try:
-        with urllib.request.urlopen(req, context=ctx) as response:
-            if response.status == 200:
+    page = 1
+    while True:
+        url = f"https://api.github.com/repos/{repo}/issues?state=all&per_page=100&page={page}"
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, context=ctx) as response:
                 issues = json.loads(response.read().decode('utf-8'))
-                for issue in issues:
-                    existing_issues[issue['title'].strip()] = (issue['number'], issue['state'])
-    except Exception as e:
-        print(f"⚠️ Could not fetch existing issues: {e}")
+        except Exception as e:
+            print(f"⚠️ Could not fetch existing issues (page {page}): {e}")
+            # Without the full list we can't tell what already exists; stop rather than create duplicates
+            sys.exit(1)
+        if not issues:
+            break
+        for issue in issues:
+            if "pull_request" in issue:  # the issues endpoint also returns PRs
+                continue
+            existing_issues[issue['title'].strip()] = (issue['number'], issue['state'])
+        page += 1
     return existing_issues
 
 def update_issue_labels(issue_number, labels, token, repo, ctx):
@@ -120,9 +128,8 @@ def main():
 
     print(f"🔍 Scanning {readme_path} for To-Do items...")
     
+    # Verify TLS: this request carries the repository token
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
 
     print("📥 Fetching existing issues...")
     existing_issues = get_existing_issues(token, repo, ctx)
