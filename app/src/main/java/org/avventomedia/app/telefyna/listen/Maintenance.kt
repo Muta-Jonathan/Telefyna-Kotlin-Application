@@ -1,6 +1,5 @@
 package org.avventomedia.app.telefyna.listen
 
-import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
@@ -81,11 +80,9 @@ class Maintenance {
             monitorInstance, 1, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        monitorInstance.alarmManager?.setExact(
-            AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + millisToMaintenance,
-            pendingIntent
-        )
+        monitorInstance.alarmManager?.let {
+            Utils.setExactAlarm(it, System.currentTimeMillis() + millisToMaintenance, pendingIntent)
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -268,7 +265,7 @@ class Maintenance {
         val alarmPendingIntent = PendingIntent.getBroadcast(Monitor.instance, index, intent,
             PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         pendingIntents[start] = alarmPendingIntent
-        Monitor.instance?.alarmManager?.setExact(AlarmManager.RTC_WAKEUP, millis, alarmPendingIntent)
+        Monitor.instance?.alarmManager?.let { Utils.setExactAlarm(it, millis, alarmPendingIntent) }
     }
 
     /*
