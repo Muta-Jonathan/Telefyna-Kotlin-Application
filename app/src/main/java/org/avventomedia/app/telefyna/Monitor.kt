@@ -39,6 +39,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.PlayerNotificationManager
@@ -64,6 +65,7 @@ import org.avventomedia.app.telefyna.modal.LowerThird
 import org.avventomedia.app.telefyna.modal.News
 import org.avventomedia.app.telefyna.modal.Playlist
 import org.avventomedia.app.telefyna.modal.Seek
+import org.avventomedia.app.telefyna.player.SchemeRoutingDataSource
 import org.avventomedia.app.telefyna.player.TelefynaRenderersFactory
 import org.avventomedia.app.telefyna.ticker.TickerAdapter
 import org.avventomedia.app.telefyna.ticker.TickerItem
@@ -460,11 +462,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         player = if (renderersFactory != null) {
             ExoPlayer.Builder(context, renderersFactory)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(SchemeRoutingDataSource.Factory(context)))
                 .setAudioAttributes(audioAttributes, true)
                 .setHandleAudioBecomingNoisy(true)
                 .build()
         } else {
             ExoPlayer.Builder(context)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(SchemeRoutingDataSource.Factory(context)))
                 .setAudioAttributes(audioAttributes, true)
                 .setHandleAudioBecomingNoisy(true)
                 .build()

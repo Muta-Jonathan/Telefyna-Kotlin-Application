@@ -3,7 +3,6 @@ package org.avventomedia.app.telefyna.listen
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -13,24 +12,15 @@ import androidx.annotation.RequiresApi
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.rtmp.RtmpDataSource
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import org.avventomedia.app.telefyna.Metrics
 import org.avventomedia.app.telefyna.Monitor
 import org.avventomedia.app.telefyna.Utils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
 import org.avventomedia.app.telefyna.modal.Playlist
-import org.avventomedia.app.telefyna.player.SrtDataSourceFactory
-import org.avventomedia.app.telefyna.player.TsOnlyExtractorFactory
 import java.util.Calendar
 
 class Maintenance {
-    companion object {
-        private const val QUERY_PARAM_PASSCODE = "passcode"
-    }
-
     private var startedSlotsToday: MutableMap<String, CurrentPlaylist> = HashMap()
     private var pendingIntents: MutableMap<String, PendingIntent> = HashMap()
 
@@ -154,40 +144,8 @@ class Maintenance {
         val programs = mutableListOf<MediaItem>()
         playlist?.let {
             if (it.type == Playlist.Type.ONLINE) {
-                when {
-                    it.urlOrFolder?.contains("rtmp://") == true -> {
-                        // Handle RTMP with custom media source
-                        val mediaSource = getRtmpSource(Uri.parse(it.urlOrFolder))
-                        programs.add(mediaSource.mediaItem)
-                    }
-                    it.urlOrFolder?.contains("srt://") == true -> {
-                        // Handle SRT
-                        val srtUrl = Uri.parse(it.urlOrFolder)
-                        val passcode = srtUrl.getQueryParameter(QUERY_PARAM_PASSCODE)
-
-                        // Create MediaItem with custom cache key (passcode if present)
-                        val mediaItemBuilder = MediaItem.Builder()
-                            .setUri(srtUrl)
-                        // Set custom cache key if passcode is present
-                        if (!passcode.isNullOrEmpty()) {
-                            mediaItemBuilder.setCustomCacheKey(passcode) // Use passcode as custom cache key
-                        }
-
-                        val mediaItem = mediaItemBuilder.build()
-
-                        // Create SRT source and add to programs
-                        val mediaSource = getSrtSource(mediaItem)
-                        programs.add(mediaSource.mediaItem)
-                    }
-                    else -> {
-                        // Handle HLS, RTSP, and Smooth Streaming (default behavior)
-                        it.urlOrFolder?.let { url ->
-                            MediaItem.fromUri(url).let { mediaItem ->
-                                programs.add(mediaItem)
-                            }
-                        }
-                    }
-                }
+                // HLS, DASH, RTSP, RTMP and SRT are all resolved by the player's SchemeRoutingDataSource
+                it.urlOrFolder?.trim()?.let { url -> programs.add(MediaItem.fromUri(url)) }
             } else {
                 it.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.forEachIndexed { i, _ ->
                     val pgms = mutableListOf<MediaItem>()
@@ -203,21 +161,6 @@ class Maintenance {
             }
         }
         return programs
-    }
-
-    // Support Rtmp stream "rtmp//server:port" or "rtmp//server"
-    @OptIn(UnstableApi::class)
-    private fun getRtmpSource(uri: Uri): MediaSource {
-        val rtmpDataSourceFactory = RtmpDataSource.Factory()
-        return ProgressiveMediaSource.Factory(rtmpDataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(uri))
-    }
-
-    // Support srt stream "srt//server:port" or "srt//server"
-    @OptIn(UnstableApi::class)
-    private fun getSrtSource(mediaItem: MediaItem): MediaSource {
-       return ProgressiveMediaSource.Factory(SrtDataSourceFactory(), TsOnlyExtractorFactory())
-           .createMediaSource(mediaItem)
     }
 
     @OptIn(UnstableApi::class)
