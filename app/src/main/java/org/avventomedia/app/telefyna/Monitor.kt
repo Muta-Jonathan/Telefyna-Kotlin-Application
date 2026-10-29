@@ -1004,7 +1004,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             } else {
                 nowPlayingIndex?.let { switchNow(it, false, this) }
             }
-        } else if (player?.isCurrentMediaItemSeekable == true) {
+        } else if (currentPlaylist?.type != Playlist.Type.ONLINE) {
+            // Local playlist: skip the bad file and carry on with the rest of the programme. A file that failed to parse
+            // is never "seekable", so gating on seekability sent the whole playlist to fillers over one bad file.
             Logger.log(AuditLog.Event.ERROR, "Skipping corrupted local file: ${currentItem?.mediaId}")
             val nextItemIndex = (player?.currentMediaItemIndex ?: 0) + 1
             if (nextItemIndex < programItems.size) {
