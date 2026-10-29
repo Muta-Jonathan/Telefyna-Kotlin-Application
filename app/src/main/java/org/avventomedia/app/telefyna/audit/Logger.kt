@@ -63,12 +63,7 @@ class Logger {
             }
             // Resolve path safely even if Monitor.instance is null
             val path = Monitor.instance?.getAuditLogsFilePath(getToday()) ?: if (context != null) {
-                val directory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    File(context.getExternalFilesDir(null), "telefynaAudit")
-                } else {
-                    File(android.os.Environment.getExternalStorageDirectory(), "telefynaAudit")
-                }
-                if (!directory.exists()) directory.mkdirs()
+                val directory = auditDirectory(context)
                 val dateFormat = SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
                 val today = dateFormat.format(Calendar.getInstance().time)
                 "${directory.absolutePath}/${today}.log"
@@ -151,6 +146,28 @@ class Logger {
             }
             return deleted
         }
+
+        private const val AUDIT_FOLDER = "telefynaAudit"
+
+        /**
+         * One place for logs and operator control files: telefynaAudit at the root of storage, where FTP, Syncthing
+         * and file managers can reach it. Needs All-files access on Android 11+ (which Telefyna requests);
+         * without it, falls back to the app-private folder, the only location Android then allows.
+         */
+        fun auditDirectory(context: Context): File {
+            val sharedStorage = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+                    android.os.Environment.isExternalStorageManager()
+            val directory = if (sharedStorage) {
+                File(android.os.Environment.getExternalStorageDirectory(), AUDIT_FOLDER)
+            } else {
+                legacyAuditDirectory(context)
+            }
+            if (!directory.exists()) directory.mkdirs()
+            return directory
+        }
+
+        /** Where Android 11+ builds used to keep telefynaAudit (Android/data/<pkg>/files/telefynaAudit). */
+        fun legacyAuditDirectory(context: Context): File = File(context.getExternalFilesDir(null), AUDIT_FOLDER)
 
         fun getOsKillReason(context: Context): String {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
