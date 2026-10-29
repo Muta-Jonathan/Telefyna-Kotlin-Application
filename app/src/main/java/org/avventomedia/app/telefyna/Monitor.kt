@@ -95,6 +95,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val REQUEST_CODE_PERMISSIONS = 123
         private const val PERMISSION_REQUEST_CODE = 100
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
+        private const val OVERLAY_PERMISSION_ASKED = "OVERLAY_PERMISSION_ASKED"
         var instance: Monitor? = null // for player am using media3
         private const val KEEP_ON_AIR_ACTION = "org.avventomedia.app.telefyna.KEEP_ON_AIR"
         private const val CROSS_FADE_DURATION = 1000L // Reduce fade duration for faster switching to 2seconds
@@ -331,8 +332,26 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         // KeepOnAirReceiver is now manifest-registered (survives process death)
 
+        ensureBackgroundRelaunchAllowed()
+
         // Initialize permissions and start maintenance only when permitted
         startMaintenanceIfPermitted()
+    }
+
+    /**
+     * From Android 10, the watchdog receivers can't start this Activity once the app is in the background or dead,
+     * unless the app may draw overlays (or is the HOME app). Without this, "App Relaunch" is logged but nothing appears.
+     */
+    private fun ensureBackgroundRelaunchAllowed() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || Settings.canDrawOverlays(this)) return
+        Logger.log(AuditLog.Event.ERROR, "Watchdog relaunch is blocked until 'Display over other apps' is allowed. Grant via ADB: adb shell appops set $packageName SYSTEM_ALERT_WINDOW allow")
+        if (isAndroidTV() || sharedPreferences.getBoolean(OVERLAY_PERMISSION_ASKED, false)) return
+        sharedPreferences.edit().putBoolean(OVERLAY_PERMISSION_ASKED, true).apply()
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.fromParts("package", packageName, null)))
+        } catch (e: Exception) {
+            Logger.log(AuditLog.Event.ERROR, "No overlay permission settings UI: ${e.message}")
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -38,6 +38,19 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Opt-in kiosk mode for dedicated playout boxes: makes Telefyna the HOME app so the OS itself keeps it
+             running and relaunches it. Enable with: adb shell pm enable org.avventomedia.app.telefyna/.HomeLauncher -->
+        <activity-alias
+            android:name=".HomeLauncher"
+            android:enabled="false"
+            android:exported="true"
+            android:targetActivity=".Monitor">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
         <!-- Only fired by our own AlarmManager PendingIntents; must not be reachable by other apps -->
         <receiver android:name=".listen.PlaylistScheduler" android:exported="false" />
         <receiver android:name=".listen.MaintenanceReceiver" android:exported="false" />
@@ -81,4 +94,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Exempts the watchdog receivers from Android 10+ background activity launch restrictions -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 </manifest>
