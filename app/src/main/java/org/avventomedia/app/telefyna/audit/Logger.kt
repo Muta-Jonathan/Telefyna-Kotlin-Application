@@ -18,6 +18,8 @@ import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 
 class Logger {
@@ -30,6 +32,18 @@ class Logger {
             AuditLog.Event.CACHE_NOW_PLAYING_RESUME,
             AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME
         )
+
+        // Single writer thread: keeps disk I/O off the main thread while preserving log order
+        private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "telefyna-audit-writer") }
+
+        /** Waits for queued log lines to reach disk; call before the process is killed. */
+        fun flush(timeoutMillis: Long = 2000) {
+            try {
+                writer.submit {}.get(timeoutMillis, TimeUnit.MILLISECONDS)
+            } catch (e: Exception) {
+                Log.e("WRITING_AUDIT_ERROR", "Flush timed out: ${e.message}")
+            }
+        }
 
         /*
          * TODO mail, save to file
@@ -65,11 +79,13 @@ class Logger {
             if (!path.isNullOrBlank()) {
                 val file = File(path)
                 val msg = String.format("%s %s: \n\t%s\n\n", getNow(), event.name, message)
-                try {
-                    // Always append log entries so logs are never deleted or overwritten
-                    FileUtils.writeStringToFile(file, msg.replace("<br>", ","), StandardCharsets.UTF_8, true)
-                } catch (e: IOException) {
-                    Log.e("WRITING_AUDIT_ERROR", e.message ?: "Error writing audit")
+                writer.execute {
+                    try {
+                        // Always append log entries so logs are never deleted or overwritten
+                        FileUtils.writeStringToFile(file, msg.replace("<br>", ","), StandardCharsets.UTF_8, true)
+                    } catch (e: IOException) {
+                        Log.e("WRITING_AUDIT_ERROR", e.message ?: "Error writing audit")
+                    }
                 }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -92,7 +108,8 @@ class Logger {
         }
 
         private fun getNow(): String {
-            return datetimeFormat.format(Calendar.getInstance().time)
+            // SimpleDateFormat is not thread-safe and logging happens from several threads
+            return synchronized(datetimeFormat) { datetimeFormat.format(Calendar.getInstance().time) }
         }
 
         @OptIn(UnstableApi::class)

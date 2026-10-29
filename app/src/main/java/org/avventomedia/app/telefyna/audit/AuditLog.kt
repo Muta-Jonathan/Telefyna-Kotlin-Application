@@ -24,7 +24,7 @@ class AuditLog {
         INTERNET_RESTORED("Internet has been restored"),
         BACK_UP("Running backup"),
         RESTARTING("Restarting Telefyna"),
-        TIME_CHANGED("Time changed"),
+        TIME_CHANGED("Time changed, rescheduling: %s"),
 
         // scheduler
         PLAYLIST("$SPLITTER[ Preparing to play playlist: %s: %s"),
@@ -38,6 +38,7 @@ class AuditLog {
         PLAYLIST_COMPLETED("$SPLITTER] Completed playing playlist: %s"),
         PLAYLIST_EXHAUSTED("$SPLITTER] Exhausted all media items in folder for playlist: %s. Last played item: %s. Switching to filler."),
         PLAYLIST_ERROR("$SPLITTER] Error playing playlist: %s"),
+        PLAYLIST_CARRY_OVER("Continuing playlist: %s past midnight until it ends or the next slot starts"),
 
         // player
         DISPLAY_LOGO_OFF("Turning OFF Logo"),
@@ -72,7 +73,7 @@ class AuditLog {
             val schedulers = arrayOf(
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,
                 PLAYLIST_EMPTY_PLAY, PLAYLIST_MODIFIED, PLAYLIST_ITEM_CHANGE,
-                PLAYLIST_COMPLETED, PLAYLIST_ERROR, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
+                PLAYLIST_COMPLETED, PLAYLIST_ERROR, PLAYLIST_CARRY_OVER, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
                 DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
                 DISPLAY_PROGRAM_WATERMARK_OFF, DISPLAY_LIVE_LOGO_ON,
                 DISPLAY_REPEAT_PROGRAM_WATERMARK_ON
