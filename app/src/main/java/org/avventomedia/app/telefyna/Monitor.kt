@@ -95,6 +95,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val REQUEST_CODE_PERMISSIONS = 123
         private const val PERMISSION_REQUEST_CODE = 100
         private const val MANAGE_STORAGE_REQUEST_CODE = 101
+        private const val OVERLAY_PERMISSION_ASKED = "OVERLAY_PERMISSION_ASKED"
         var instance: Monitor? = null // for player am using media3
         private const val KEEP_ON_AIR_ACTION = "org.avventomedia.app.telefyna.KEEP_ON_AIR"
         private const val CROSS_FADE_DURATION = 1000L // Reduce fade duration for faster switching to 2seconds
@@ -103,6 +104,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private val gson = GsonBuilder().setPrettyPrinting().create()
         private val possibleExtensions = listOf("webp", "png", "jpg", "gif")
         private val durationCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Long>>()
+        private const val RESUME_SAVE_INTERVAL = 15_000L
         private const val RETRY_PREPARE_DELAY = 5000L
         // PlaybackException.ERROR_CODE_IO_* (2000-2999)
         private val IO_ERROR_CODES = 2000..2999
@@ -202,13 +204,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return getLastModifiedFor(index) - getSharedPlaylistLastModified(index)
     }
 
-    private fun trackingNowPlaying(index: Int, seekTo: Long, noProgramTransition: Boolean) {
+    private fun trackingNowPlaying(index: Int, seekTo: Long, noProgramTransition: Boolean, log: Boolean = true) {
         if (playlistByIndex[index].isResuming()) {
-            cachePlayingAt(index, seekTo, noProgramTransition)
+            cachePlayingAt(index, seekTo, noProgramTransition, log)
         }
     }
 
-    private fun cachePlayingAt(index: Int, seekTo: Long, noProgramTransition: Boolean) {
+    private fun cachePlayingAt(index: Int, seekTo: Long, noProgramTransition: Boolean, log: Boolean = true) {
         val at = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
             0
         } else {
@@ -237,7 +239,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 dateFormat?.format(Calendar.getInstance().time)
             )
             editor.apply() // Use apply instead of commit for asynchronous saving
-            Logger.log(AuditLog.Event.CACHE_NOW_PLAYING_RESUME, getPlayingAtIndexLabel(index), programName, "$at-$seekTo")
+            if (log) {
+                Logger.log(AuditLog.Event.CACHE_NOW_PLAYING_RESUME, getPlayingAtIndexLabel(index), programName, "$at-$seekTo")
+            }
         }
     }
 
@@ -326,7 +330,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         })
 
         // handle any uncaught exception
-        Thread.setDefaultUncaughtExceptionHandler(TelefynaUnCaughtExceptionHandler())
+        // Install once per process: on Activity recreation the current default is already ours, and wrapping it again
+        // would chain our handler to itself
+        if (Thread.getDefaultUncaughtExceptionHandler() !is TelefynaUnCaughtExceptionHandler) {
+            Thread.setDefaultUncaughtExceptionHandler(TelefynaUnCaughtExceptionHandler())
+        }
         if (intent.getBooleanExtra(TelefynaUnCaughtExceptionHandler.CRASH, false)) {
             intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)
                 ?.let { Logger.log(AuditLog.Event.CRASH, it) }
@@ -339,6 +347,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         handler = Handler()
         sharedPreferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
         evaluateSafeMode()
+        handler?.postDelayed(resumePositionSaver, RESUME_SAVE_INTERVAL)
 
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -353,8 +362,26 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         // KeepOnAirReceiver is now manifest-registered (survives process death)
 
+        ensureBackgroundRelaunchAllowed()
+
         // Initialize permissions and start maintenance only when permitted
         startMaintenanceIfPermitted()
+    }
+
+    /**
+     * From Android 10, the watchdog receivers can't start this Activity once the app is in the background or dead,
+     * unless the app may draw overlays (or is the HOME app). Without this, "App Relaunch" is logged but nothing appears.
+     */
+    private fun ensureBackgroundRelaunchAllowed() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || Settings.canDrawOverlays(this)) return
+        Logger.log(AuditLog.Event.ERROR, "Watchdog relaunch is blocked until 'Display over other apps' is allowed. Grant via ADB: adb shell appops set $packageName SYSTEM_ALERT_WINDOW allow")
+        if (isAndroidTV() || sharedPreferences.getBoolean(OVERLAY_PERMISSION_ASKED, false)) return
+        sharedPreferences.edit().putBoolean(OVERLAY_PERMISSION_ASKED, true).apply()
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.fromParts("package", packageName, null)))
+        } catch (e: Exception) {
+            Logger.log(AuditLog.Event.ERROR, "No overlay permission settings UI: ${e.message}")
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -391,12 +418,22 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return File(Environment.getExternalStorageDirectory().absolutePath + postfix)
     }
 
+    /**
+     * Operator control flags (init.txt, restart.txt, ...) live in the telefynaAudit folder next to the logs.
+     * Flags dropped in the old app-private location (Android/data/.../telefynaAudit) are still honoured.
+     */
+    private fun getControlFile(name: String): File {
+        val primary = File(Logger.auditDirectory(this), name)
+        val legacy = File(Logger.legacyAuditDirectory(this), name)
+        return if (!primary.exists() && legacy.exists()) legacy else primary
+    }
+
     private fun getRestartFile(): File {
-        return File(getAuditFilePath(this,"restart.txt"))
+        return getControlFile("restart.txt")
     }
 
     private fun getRebootFile(): File {
-        return File(getAuditFilePath(this,"reboot.txt"))
+        return getControlFile("reboot.txt")
     }
 
     private fun getAuditConfigFile(): File {
@@ -404,15 +441,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun getBackupConfigFile(): File {
-        return File(getAuditFilePath(this,"backupConfig.txt"))
+        return getControlFile("backupConfig.txt")
     }
 
     private fun getBackupConfigResetFile(): File {
-        return File(getAuditFilePath(this,"backupConfigReset.txt"))
+        return getControlFile("backupConfigReset.txt")
     }
 
     private fun getReInitializerFile(): File {
-        return File(getAuditFilePath(this,"init.txt"))
+        return getControlFile("init.txt")
     }
 
     private fun getBumperDirectory(useExternalStorage: Boolean): String {
@@ -440,21 +477,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun getAuditFilePath(context: Context, name: String): String {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // For API 30 and above, use getExternalFilesDir() for Scoped Storage
-            val directory = File(context.getExternalFilesDir(null), "telefynaAudit")
-            if (!directory.exists()) {
-                directory.mkdirs() // Create the directory if it doesn't exist
-            }
-            "${directory.absolutePath}/$name"
-        } else {
-            // For API 29 and lower, use getExternalStorageDirectory() (deprecated)
-            val directory = File(Environment.getExternalStorageDirectory(), "telefynaAudit")
-            if (!directory.exists()) {
-                directory.mkdirs() // Create the directory if it doesn't exist
-            }
-            "${directory.absolutePath}/$name"
-        }
+        return "${Logger.auditDirectory(context).absolutePath}/$name"
     }
 
     fun getAuditLogsFilePath(name: String): String {
@@ -514,11 +537,25 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return badStart?.let { "start time '$it' is not HH:mm" }
     }
 
-    private fun cacheNowPlaying(noProgramTransition: Boolean) {
-        val playerView = getPlayerView(false)
+    private fun cacheNowPlaying(noProgramTransition: Boolean, log: Boolean = true) {
         val now = nowPlayingIndex?.let { getPlaylistIndex(it) }
         if (now != null && player != null) {
-            trackingNowPlaying(now, player!!.currentPosition, noProgramTransition)
+            trackingNowPlaying(now, player!!.currentPosition, noProgramTransition, log)
+        }
+    }
+
+    // Saves the resume point of resuming playlists while they play, so a power cut or crash resumes close to where
+    // it stopped instead of at the start of the program (positions were only saved on item transitions)
+    private val resumePositionSaver = object : Runnable {
+        override fun run() {
+            try {
+                if (player?.isPlaying == true && currentPlaylist?.isResuming() == true) {
+                    cacheNowPlaying(false, log = false)
+                }
+            } catch (e: Exception) {
+                Logger.log(AuditLog.Event.ERROR, "Saving resume position failed: ${e.message}")
+            }
+            handler?.postDelayed(this, RESUME_SAVE_INTERVAL)
         }
     }
 

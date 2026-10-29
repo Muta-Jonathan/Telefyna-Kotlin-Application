@@ -8,7 +8,10 @@ import org.avventomedia.app.telefyna.audit.Logger
 import java.io.File
 import java.io.FileWriter
 
-class TelefynaUnCaughtExceptionHandler : Thread.UncaughtExceptionHandler {
+class TelefynaUnCaughtExceptionHandler(
+    // The platform handler: lets Android kill the process and record REASON_CRASH when we can't restart ourselves
+    private val previous: Thread.UncaughtExceptionHandler? = Thread.getDefaultUncaughtExceptionHandler()
+) : Thread.UncaughtExceptionHandler {
     companion object {
         const val CRASH = "crash"
         const val EXCEPTION = "exception"
@@ -39,8 +42,14 @@ class TelefynaUnCaughtExceptionHandler : Thread.UncaughtExceptionHandler {
         }
 
         context?.let { Monitor.recordCrash(it) } // feeds crash-loop safe mode on the next start
-        Logger.flush()
-        context?.restartApp()
+        Logger.flush() // make sure the crash line reaches disk before the process goes
+        if (context != null) {
+            context.restartApp()
+        } else {
+            // No Activity to restart from: don't leave a half-dead process behind. Let the platform crash it, so the
+            // START_STICKY foreground service and the watchdog alarms bring Telefyna back.
+            previous?.uncaughtException(thread, ex)
+        }
     }
 
 
