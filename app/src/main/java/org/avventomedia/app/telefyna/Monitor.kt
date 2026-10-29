@@ -64,6 +64,7 @@ import org.avventomedia.app.telefyna.modal.LowerThird
 import org.avventomedia.app.telefyna.modal.News
 import org.avventomedia.app.telefyna.modal.Playlist
 import org.avventomedia.app.telefyna.modal.Seek
+import org.avventomedia.app.telefyna.player.LoudnessLevelingAudioProcessor
 import org.avventomedia.app.telefyna.player.TelefynaRenderersFactory
 import org.avventomedia.app.telefyna.ticker.TickerAdapter
 import org.avventomedia.app.telefyna.ticker.TickerItem
@@ -104,6 +105,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private val possibleExtensions = listOf("webp", "png", "jpg", "gif")
         private val durationCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Long>>()
     }
+
+    // Always in the audio chain; enabled/disabled from config on every (re)load without rebuilding the player
+    private val loudnessLeveling = LoudnessLevelingAudioProcessor()
 
     private var isMaintenanceStarted = false
     private var activeLogoState: String? = null
@@ -431,6 +435,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             FileReader(getConfigFile()).use { reader ->
                 configuration = Gson().fromJson(BufferedReader(reader), Config::class.java)
                 Logger.log(AuditLog.Event.CONFIGURATION)
+                configuration?.let {
+                    loudnessLeveling.enabled = it.loudnessLeveling
+                    loudnessLeveling.targetDbfs = it.loudnessTargetDbfs
+                }
             }
         } catch (e: IOException) {
             Logger.log(AuditLog.Event.ERROR, e.message ?: "Unknown error")
@@ -448,7 +456,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     @OptIn(UnstableApi::class)
     private fun buildPlayer(context: Context): ExoPlayer {
         val renderersFactory = instance?.let { 
-            TelefynaRenderersFactory(it).apply {
+            TelefynaRenderersFactory(it, loudnessLeveling).apply {
                 setEnableAudioTrackPlaybackParams(true)
                 setEnableDecoderFallback(true)
             }
