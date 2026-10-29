@@ -56,7 +56,7 @@ Telefyna turns an Android TV box into an automated broadcast playout. It plays l
      ```
    - *Display over other apps* lets the watchdog bring Telefyna back after a crash; Android 10+ otherwise sometimes blocks the relaunch.
    - On a box used only for playout you can also make Telefyna the home app, so Android itself keeps it in front: `adb shell pm enable org.avventomedia.app.telefyna/.HomeLauncher`.
-3. **Create your configuration** with the [online configuration tool](https://avventomedia.org/telefynaConfiguration/) and save it as `config.json`.
+3. **Create your configuration** with the [online configuration tool](https://avventomedia.org/telefynaConfiguration/) and save it as `config.json`. *Or skip it:* on first run without a `config.json`, Telefyna installs a default one (a `Default` and a `Fillers` playlist) and creates the folder layout below. Just copy videos into `playlist/default` and `playlist/fillers` and it starts playing.
 4. **Copy content** to a `telefyna` folder at the root of internal storage or the SD card (see [Folder layout](#folder-layout)).
 5. **Launch Telefyna** from the TV home screen (*Your apps*). It loads the config, schedules the day, and starts the current slot.
 
@@ -273,7 +273,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [ ] **OTA App Updates:** Staged remote rollout of new Telefyna versions across the fleet.
 
 ### Backlog
-- [ ] Auto-installation of config under resources if non-existent at first run.
+- [x] Auto-installation of config under resources if non-existent at first run.
 - [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
 - [ ] Enhance resuming playlists (`LOCAL_RESUMING*`) to track the actual filename (`mediaId`) instead of just the index, preventing playlist resets or skipped episodes when files are added or removed from the folder.
 - [ ] Test if dates down the playlist overwrite the schedule.
