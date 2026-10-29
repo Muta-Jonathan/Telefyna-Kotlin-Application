@@ -107,6 +107,11 @@ data class Playlist(
         return dayScheduled || dateScheduled
     }
 
+    /** True when this playlist is booked for today's date specifically (not just by weekday or daily). */
+    fun scheduledByDateToday(): Boolean {
+        return active && dates?.contains(SimpleDateFormat(DATE_FORMAT).format(Calendar.getInstance().time)) == true
+    }
+
     // only overrides days, dates and start but maintains the rest
     fun schedule(parent: Playlist): Playlist {
         type = parent.type

@@ -126,7 +126,8 @@ class Maintenance {
         config?.let {
             val basePlaylists = it.playlists ?: emptyArray()
             val schedules = it.schedules ?: emptyArray()
-            val starts = mutableListOf<String>()
+            // start time -> name of the slot holding it and whether that slot is booked for today's date
+            val starts = mutableMapOf<String, Pair<String, Boolean>>()
 
             // Build a map of playlists by ID for O(1) lookup, and store their index for state saving
             val playlistMap = mutableMapOf<String, Pair<Int, Playlist>>()
@@ -197,19 +198,27 @@ class Maintenance {
     }
 
     @OptIn(UnstableApi::class)
-    private fun schedulePlaylistAtStart(playlist: Playlist, index: Int, starts: MutableList<String>) {
-        // Was scheduled, remove existing playlist to reschedule a new later one
+    private fun schedulePlaylistAtStart(playlist: Playlist, index: Int, starts: MutableMap<String, Pair<String, Boolean>>) {
         val start = playlist.start
-        if (starts.contains(start)) {
+        val dated = playlist.scheduledByDateToday()
+        val existing = start?.let { starts[it] }
+        if (start != null && existing != null) {
+            // Two slots at the same time: one booked for today's date (special event) beats a weekly/daily one,
+            // whatever their order in the config; otherwise the later entry replaces the earlier one
+            val (existingName, existingDated) = existing
+            if (existingDated && !dated) {
+                Logger.log(AuditLog.Event.SCHEDULE_CLASH, start, existingName, playlist.name ?: "")
+                return
+            }
+            Logger.log(AuditLog.Event.SCHEDULE_CLASH, start, playlist.name ?: "", existingName)
             pendingIntents[start]?.let { operation ->
                 Monitor.instance?.alarmManager?.cancel(operation)
             }
             startedSlotsToday.remove(start)
-            starts.remove(start)
         }
         schedulePlayList(playlist, index)
         if (start != null) {
-            starts.add(start)
+            starts[start] = Pair(playlist.name ?: "", dated)
         }
     }
 
