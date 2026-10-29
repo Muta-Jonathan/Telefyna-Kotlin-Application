@@ -145,8 +145,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     var dateFormat: SimpleDateFormat? = null
         private set
 
-    fun addPlayListByIndex(playlist: Playlist) {
-        playlistByIndex.add(playlist)
+    // Swap the whole table at once so player callbacks never see a half-built (or empty) schedule
+    fun replacePlaylists(playlists: List<Playlist>) {
+        playlistByIndex = playlists.toMutableList()
     }
 
     // This is the first default playlist, it plays whenever automation is disabled or nothing is scheduled/available
@@ -426,7 +427,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     fun initialise() {
-        playlistByIndex = mutableListOf()
         try {
             FileReader(getConfigFile()).use { reader ->
                 configuration = Gson().fromJson(BufferedReader(reader), Config::class.java)
@@ -865,7 +865,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         nowPlayingIndex?.let {
             when (state) {
                 Player.STATE_ENDED -> {
-                    val playlist = playlistByIndex[it]
+                    val playlist = playlistByIndex.getOrNull(it) ?: return
                     val isFiniteType = playlist.type == Playlist.Type.LOCAL_SEQUENCED ||
                             playlist.type == Playlist.Type.LOCAL_RANDOMIZED ||
                             playlist.isResuming()
