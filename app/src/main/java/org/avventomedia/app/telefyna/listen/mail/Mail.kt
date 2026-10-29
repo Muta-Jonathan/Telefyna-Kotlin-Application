@@ -1,6 +1,7 @@
 package org.avventomedia.app.telefyna.listen.mail
 
 import android.os.Build
+import android.util.Base64
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
 import androidx.media3.common.util.UnstableApi
@@ -13,7 +14,6 @@ import org.avventomedia.app.telefyna.modal.Receivers
 import java.io.File
 import java.io.UnsupportedEncodingException
 import java.nio.charset.StandardCharsets
-import java.util.Base64
 import java.util.Properties
 import javax.activation.DataHandler
 import javax.activation.DataSource
@@ -37,15 +37,14 @@ class Mail(private val auditAlert: AuditAlert) {
     private lateinit var mailSession: Session
     private lateinit var emailMessage: MimeMessage
 
-    @RequiresApi(Build.VERSION_CODES.O)
+    // android.util.Base64: java.util.Base64 crashes below API 26 and minSdk is 21
     private fun decode(str: String): String {
-        return String(Base64.getDecoder().decode(str), StandardCharsets.UTF_8)
+        return String(Base64.decode(str, Base64.DEFAULT), StandardCharsets.UTF_8)
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     private fun decodePass(pass: String): String {
         val cleanedPass = pass.dropLast(1) // drop random final number
-        val hash = Base64.getEncoder().encodeToString("VkdoaGJtdHpSbTl5VlhOcGJtZFVaV3hsWm5sdVlTd2dWMlVnYkdGMVkyaGxaQ0JVWld4bFpubHVZU0JwYmlBeU1ESXhJR0o1SUVkdlpDZHpJR2R5WVdObA==".toByteArray())
+        val hash = Base64.encodeToString("VkdoaGJtdHpSbTl5VlhOcGJtZFVaV3hsWm5sdVlTd2dWMlVnYkdGMVkyaGxaQ0JVWld4bFpubHVZU0JwYmlBeU1ESXhJR0o1SUVkdlpDZHpJR2R5WVdObA==".toByteArray(), Base64.NO_WRAP)
         return decode(decode(decode(decode(decode(cleanedPass.replace(hash, ""))))))
     }
 
@@ -81,30 +80,32 @@ class Mail(private val auditAlert: AuditAlert) {
         return MimeBodyPart().apply {
             val source: DataSource = FileDataSource(attachment)
             dataHandler = DataHandler(source)
-            fileName = attachment
+            fileName = File(attachment).name
         }
     }
 
     @OptIn(UnstableApi::class)
     @Throws(MessagingException::class)
     fun setEmailBody(receivers: Receivers, draft: Draft) {
-        if (!receivers.isAttachConfig && receivers.attachAuditLog == 0) {
+        val wantsAttachments = receivers.isAttachConfig || receivers.attachAuditLog > 0
+        if (!wantsAttachments || AuditLog.Event.MAINTENANCE != auditAlert.event) {
             emailMessage.setContent(draft.body, "text/html") // for a html email
-        } else if (AuditLog.Event.MAINTENANCE == auditAlert.event) {
-            val multipart = MimeMultipart()
-            val config = Monitor.instance?.getConfigFile()
-
-            if (receivers.isAttachConfig && File(config as String).exists()) {
-                multipart.addBodyPart(attach(config, draft))
-            }
-
-            Logger.getAuditsForNDays(receivers.attachAuditLog).forEach { audit ->
-                if (File(audit).exists()) {
-                    multipart.addBodyPart(attach(audit, draft))
-                }
-            }
-            emailMessage.setContent(multipart)
+            return
         }
+        // Daily maintenance mail: body plus the requested attachments
+        val multipart = MimeMultipart().apply {
+            addBodyPart(MimeBodyPart().apply { setContent(draft.body, "text/html") })
+        }
+        val config = Monitor.instance?.getConfigFile()
+        if (receivers.isAttachConfig && config != null && File(config).exists()) {
+            multipart.addBodyPart(attach(config, draft))
+        }
+        Logger.getAuditsForNDays(receivers.attachAuditLog).forEach { audit ->
+            if (File(audit).exists()) {
+                multipart.addBodyPart(attach(audit, draft))
+            }
+        }
+        emailMessage.setContent(multipart)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -125,7 +126,7 @@ class Mail(private val auditAlert: AuditAlert) {
     @RequiresApi(Build.VERSION_CODES.O)
     fun sendEmail() {
         if (auditAlert.alerts.mailer != null) {
-            val draft = Draft().apply {
+            val baseDraft = Draft().apply {
                 from = auditAlert.alerts.mailer!!.email.toString()
                 pass = auditAlert.alerts.mailer!!.pass.toString()
                 subject = Monitor.instance?.configuration?.let {
@@ -138,6 +139,8 @@ class Mail(private val auditAlert: AuditAlert) {
             }
 
             auditAlert.alerts.subscribers?.forEach { receivers ->
+                // Fresh draft per subscriber group: a shared one accumulated BCC addresses and leaked them to the next group
+                val draft = baseDraft.copy(bcc = mutableListOf())
                 when {
                     AuditLog.Event.Category.ADMIN == auditAlert.event.getCategory() -> {
                         draft.body = Monitor.instance?.configuration?.let {

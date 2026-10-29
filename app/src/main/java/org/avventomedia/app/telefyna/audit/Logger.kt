@@ -26,6 +26,13 @@ class Logger {
     companion object {
         @SuppressLint("SimpleDateFormat")
         private val datetimeFormat = SimpleDateFormat("dd-MM-yyyy HH:mm:ss")
+        // High-frequency bookkeeping events: logged, but one email each would flood inboxes and trip SMTP rate limits
+        private val NOT_EMAILED = setOf(
+            AuditLog.Event.KEY_PRESS,
+            AuditLog.Event.CACHE_NOW_PLAYING_RESUME,
+            AuditLog.Event.RETRIEVE_NOW_PLAYING_RESUME
+        )
+
         // Single writer thread: keeps disk I/O off the main thread while preserving log order
         private val writer = Executors.newSingleThreadExecutor { r -> Thread(r, "telefyna-audit-writer") }
 
@@ -91,7 +98,7 @@ class Logger {
         private fun emailAudit(event: AuditLog.Event, msg: String) {
             // email notification
             val config = Monitor.instance?.configuration
-            if (config != null && config.alerts?.isEnabled== true && (event.getCategory() == AuditLog.Event.Category.ADMIN || event.getCategory() == AuditLog.Event.Category.BROADCAST)) {
+            if (config != null && config.alerts?.isEnabled== true && event !in NOT_EMAILED && (event.getCategory() == AuditLog.Event.Category.ADMIN || event.getCategory() == AuditLog.Event.Category.BROADCAST)) {
                 if (Utils.internetConnected()) {
                     SendEmail().execute(AuditAlert(config.alerts!!, event, msg))
                 } else {
@@ -112,29 +119,12 @@ class Logger {
 
         @OptIn(UnstableApi::class)
         fun getAuditsForNDays(days: Int): List<String> {
-            val audits = mutableListOf<String>()
-            val auditDir = File(Monitor.instance?.getAuditFilePath(Monitor.instance!!,"") ?: "")
-            if (auditDir.exists()) {
-                val auditContents = auditDir.listFiles()
-                if (auditContents != null && auditContents.isNotEmpty()) {
-                    for (i in 0 until days) {
-                        val audit: String
-                        audit = if (i == 0) ({
-                            Monitor.instance?.getAuditLogsFilePath(getToday())
-                        }).toString() else ({
-                            val d = Calendar.getInstance().apply {
-                                add(Calendar.DAY_OF_YEAR, -i) // - one day
-                            }
-                            Monitor.instance?.dateFormat?.let {
-                                Monitor.instance!!.getAuditLogsFilePath(
-                                    it.format(d.time))
-                            }
-                        }).toString()
-                        audits.add(audit)
-                    }
-                }
+            val monitor = Monitor.instance ?: return emptyList()
+            val dateFormat = monitor.dateFormat ?: return emptyList()
+            return (0 until days).map { i ->
+                val day = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -i) }
+                monitor.getAuditLogsFilePath(dateFormat.format(day.time))
             }
-            return audits
         }
 
         /**
