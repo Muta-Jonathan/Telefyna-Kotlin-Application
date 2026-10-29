@@ -20,7 +20,7 @@ The goal is a 24/7 unattended playout that meets industry standards and can late
 Keeping the screen awake fixed only one cause. The code has several other ways to go off air on its own:
 
 1. **Midnight maintenance race:** a crash or restart, and possibly a hang (P0-1).
-2. **The watchdog can't revive a dead process on Android 10+:** background activity launch is blocked (P0-2).
+2. ~~The watchdog can't revive a dead process on Android 10+~~: **not reproduced** on Android 12; still unverified on Android 14+ (P0-2).
 3. **Activity recreation:** an HDMI, display, or Bluetooth change destroys the player (P0-3).
 4. **Audio focus or "noisy" events pause playout:** nothing resumes it for up to 30 s, and then the slot restarts (P0-4).
 5. **Error paths leave the player IDLE:** black until the watchdog fires (P0-5).
@@ -35,14 +35,11 @@ Keeping the screen awake fixed only one cause. The code has several other ways t
 - **What happens:** `initialise()` sets `playlistByIndex = mutableListOf()` on the main thread. `schedule()` only refills it after a background thread has run `Metrics.retrieve()`, and that calls `https://ipinfo.io/json` through `URL.openStream()` with **no connect or read timeout**. Video keeps playing in the meantime. The next `onMediaItemTransition` → `cacheNowPlaying` → `getPlaylistIndex()` (or `STATE_ENDED` → `playlistByIndex[it]`, or the KeepOnAir `switchNow`) then throws `IndexOutOfBoundsException` → uncaught handler → app restart → maintenance runs again. When the network is half up, `readUrl` can block forever and the schedule never loads.
 - **Fix:** Build the new playlist table off to the side and swap it in atomically on the main thread. Never clear the live one first. Move metrics out of the scheduling critical path, and give every network call a 5–10 s timeout.
 
-### P0-2 Watchdog relaunches are blocked on Android 10+
-- **Where:** [KeepOnAirReceiver.kt:29-35](../app/src/main/java/org/avventomedia/app/telefyna/listen/KeepOnAirReceiver.kt#L29-L35), [PlaylistScheduler.kt:29-35](../app/src/main/java/org/avventomedia/app/telefyna/listen/PlaylistScheduler.kt#L29-L35), [MaintenanceReceiver.kt:23-29](../app/src/main/java/org/avventomedia/app/telefyna/listen/MaintenanceReceiver.kt#L23-L29), [AutoStart.kt:16-23](../app/src/main/java/org/avventomedia/app/telefyna/listen/AutoStart.kt#L16-L23), [Monitor.kt:1606-1616](../app/src/main/java/org/avventomedia/app/telefyna/Monitor.kt#L1606-L1616)
-- **What happens:** From API 29, Android blocks `context.startActivity()` from a background receiver and from an alarm `PendingIntent.getActivity` when the app has no visible window. So the "triple-redundant watchdog" writes "App Relaunch" to the log and then nothing appears. The same applies to boot autostart and to `restartApp()`.
-- **Fix (pick one, best first):**
-  1. Make Telefyna the **HOME launcher** (add a `HOME` + `DEFAULT` intent filter) or provision it as **Device Owner** with lock-task kiosk mode. The OS then relaunches it itself. This is the industry norm for signage and playout boxes.
-  2. Ask for `SYSTEM_ALERT_WINDOW` ("Display over other apps"), which exempts the app from the background-launch block.
-  3. Move playback into the foreground service (see §6) so a dead Activity doesn't mean dead output.
-- **Verify on device:** `adb logcat | grep -i "Background activity start"` after `adb shell am kill org.avventomedia.app.telefyna`.
+### P0-2 Watchdog relaunch on Android 10+ (downgraded: not reproduced on API 31)
+- **Where:** [KeepOnAirReceiver.kt:29-35](../app/src/main/java/org/avventomedia/app/telefyna/listen/KeepOnAirReceiver.kt#L29-L35), [PlaylistScheduler.kt:29-35](../app/src/main/java/org/avventomedia/app/telefyna/listen/PlaylistScheduler.kt#L29-L35), [MaintenanceReceiver.kt:23-29](../app/src/main/java/org/avventomedia/app/telefyna/listen/MaintenanceReceiver.kt#L23-L29), [AutoStart.kt:16-23](../app/src/main/java/org/avventomedia/app/telefyna/listen/AutoStart.kt#L16-L23)
+- **Original concern:** Android 10+ blocks background activity starts, so the receivers' `context.startActivity()` relaunch would be silently refused.
+- **Verified 2026-10-29** on the Google TV emulator (API 31): `am crash` → the system restarts the `START_STICKY` `TelefynaForegroundService` → the KeepOnAir alarm → `ActivityTaskManager: START ... Monitor from uid <app>` → Monitor resumed. **The relaunch works.** The running foreground service keeps the app eligible to start activities.
+- **Still to verify:** Android 14+ (stricter background-launch rules), and boot autostart on real boxes. If either fails there, the fix is running Telefyna as the HOME launcher / Device Owner kiosk, or granting `SYSTEM_ALERT_WINDOW`.
 
 ### P0-3 Configuration changes destroy and rebuild the player
 - **Where:** [AndroidManifest.xml:30](../app/src/main/AndroidManifest.xml#L30), [Monitor.kt:1067-1089](../app/src/main/java/org/avventomedia/app/telefyna/Monitor.kt#L1067-L1089)
@@ -227,7 +224,7 @@ The **cloud** side (a separate project): a multi-tenant dashboard (fleet status,
 
 ## 9. Suggested order of work
 
-1. **Stabilise (1–2 weeks):** P0-1 … P0-9, P1-1, P1-2, P1-3, P1-5, P2-1, P2-2. Most are small, contained changes.
+1. **Stabilise (1–2 weeks):** P0-1, P0-3 … P0-9 (P0-2 only if it reproduces on Android 14+), P1-1, P1-2, P1-3, P1-5, P2-1, P2-2. Most are small, contained changes.
 2. **Fix the feature branch** (§6), then merge it.
 3. **Re-architect:** extract `ScheduleEngine` with tests, move the player into `PlayoutService`, and add structured as-run logging and the fallback slate.
 4. **Broadcast quality:** loudness normalisation, resume by file identity, ingest validation, captions, EPG export.

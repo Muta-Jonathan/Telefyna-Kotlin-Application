@@ -102,7 +102,7 @@ graph TD
 > Full details, file references and fixes: [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md)
 
 - [ ] **Midnight Maintenance Race:** Playlist table is cleared before the schedule reloads and `ipinfo` metrics have no timeout, causing IndexOutOfBounds crashes/restarts around midnight (P0-1).
-- [ ] **Watchdog Relaunch Blocked on Android 10+:** Background activity starts from receivers/alarms are blocked; run as HOME launcher / Device Owner kiosk or grant overlay permission (P0-2).
+- [ ] **Watchdog Relaunch Blocked on Android 10+:** Not reproduced on Android 12 (foreground service keeps relaunch allowed); still verify on Android 14+ and at boot on real boxes, fallback is HOME launcher / kiosk or overlay permission (P0-2).
 - [ ] **Activity Recreated on HDMI/Bluetooth Changes:** Declare full `configChanges` so display or remote changes don't restart playout (P0-3).
 - [ ] **Player Pauses on Audio Focus/Noisy Events:** Disable audio-focus and becoming-noisy handling, add `WAKE_MODE_NETWORK` (P0-4).
 - [ ] **Player Left Idle After Errors:** Re-`prepare()` after skipping items, handle BehindLiveWindow by error code instead of switching to fillers (P0-5).
@@ -148,7 +148,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [ ] Log every keypress.
 - [ ] Fix Swift bug: don't override, just replace manually.
 - [ ] Investigate bumpers missing when loaded from scheduler.
-- [ ] Handle player idling on stream; resume play/seekTo. *(see P0-5 in the audit)*
+- [ ] Handle player idling on stream; resume play/seekTo.
 - [ ] Add support for automatic drive syncing.
 - [ ] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30.
 - [ ] Support YouTube links and streams.
