@@ -37,6 +37,19 @@ class TelefynaPlaylistSchedulingTest {
     }
 
     @Test
+    fun testMalformedStartDoesNotThrow() {
+        for (bad in listOf("8:30 AM", "25:00", "12", "ab:cd", " ")) {
+            val playlist = Playlist().apply { start = bad }
+            assertEquals(null, playlist.parseStart())
+            assertFalse(playlist.isStarted())
+            assertEquals(null, playlist.getStartTime())
+            assertFalse(playlist.scheduledToday())
+        }
+        assertEquals(Pair(8, 5), Playlist(start = "08:05").parseStart())
+        assertEquals(Pair(8, 5), Playlist(start = "8:5").parseStart())
+    }
+
+    @Test
     fun testScheduledToday() {
         val now = Calendar.getInstance()
         val todayDayOfWeek = now[Calendar.DAY_OF_WEEK]
@@ -101,5 +114,17 @@ class TelefynaPlaylistSchedulingTest {
         assertEquals(0, midnightCal[Calendar.MINUTE])
         assertEquals(5, midnightCal[Calendar.SECOND]) // The 5-second maintenance offset
         assertEquals(0, midnightCal[Calendar.MILLISECOND])
+    }
+
+    @Test
+    fun testDateOnlyScheduleOnlyRunsOnThoseDates() {
+        val fmt = SimpleDateFormat("dd-MM-yyyy")
+        val today = fmt.format(Calendar.getInstance().time)
+        val tomorrow = fmt.format(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }.time)
+
+        assertTrue(Playlist(start = "10:00", dates = arrayOf(today)).scheduledToday())
+        assertFalse(Playlist(start = "10:00", dates = arrayOf(tomorrow)).scheduledToday())
+        assertFalse(Playlist(start = "10:00", days = emptyArray(), dates = arrayOf(tomorrow)).scheduledToday())
+        assertTrue(Playlist(start = "10:00").scheduledToday()) // no restriction = daily
     }
 }

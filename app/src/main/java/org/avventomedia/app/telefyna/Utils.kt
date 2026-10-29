@@ -18,35 +18,41 @@ object Utils {
 
     const val COMMA_SPLITTER: String = ","
 
+    // Reachability probe result, refreshed in the background so callers (often the main thread) never block on a socket
+    @Volatile
+    private var lastProbeReachable = true
+    private val probeStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+    private const val PROBE_INTERVAL_SECONDS = 10L
+
     @JvmStatic
     fun internetConnected(context: Context? = Monitor.instance): Boolean {
+        if (context != null && !hasInternetNetwork(context)) return false
+        if (probeStarted.compareAndSet(false, true)) {
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+                Thread(r, "telefyna-net-probe").apply { isDaemon = true }
+            }.scheduleWithFixedDelay({ lastProbeReachable = probeReachable() }, 0, PROBE_INTERVAL_SECONDS, TimeUnit.SECONDS)
+        }
+        return lastProbeReachable
+    }
+
+    private fun hasInternetNetwork(context: Context): Boolean {
         return try {
-            if (context != null) {
-                val cm =
-                        context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as?
-                                android.net.ConnectivityManager
-                if (cm != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        val network = cm.activeNetwork
-                        if (network == null) return false
-                        val capabilities = cm.getNetworkCapabilities(network)
-                        if (capabilities == null ||
-                                        !capabilities.hasCapability(
-                                                android.net.NetworkCapabilities
-                                                        .NET_CAPABILITY_INTERNET
-                                        )
-                        ) {
-                            return false
-                        }
-                    } else {
-                        @Suppress("DEPRECATION") val netInfo = cm.activeNetworkInfo
-                        if (netInfo == null || !netInfo.isConnected) {
-                            return false
-                        }
-                    }
-                }
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                ?: return true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val capabilities = cm.getNetworkCapabilities(cm.activeNetwork ?: return false)
+                capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.isConnected == true
             }
-            // Lightweight socket reachability check (no OS process creation or FD leak)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun probeReachable(): Boolean {
+        return try {
             java.net.Socket().use { socket ->
                 socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 1500)
                 true
@@ -102,6 +108,21 @@ object Utils {
         }
     }
 
+    /**
+     * Exact wake-up alarm that also fires in Doze. Falls back to an inexact one if the exact-alarm
+     * permission was revoked (API 31+) instead of throwing a SecurityException.
+     */
+    fun setExactAlarm(alarmManager: android.app.AlarmManager, triggerAtMillis: Long, operation: android.app.PendingIntent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            Logger.log(AuditLog.Event.ERROR, "Exact alarms not permitted, scheduling inexact alarm")
+            alarmManager.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, operation)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, operation)
+        } else {
+            alarmManager.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, operation)
+        }
+    }
+
     fun isValidEmail(email: String): Boolean {
         val regex = "^[\\w-_\\.+]*[\\w-_\\.]\\@([\\w]+\\.)+[\\w]+[\\w]$"
         return email.matches(Regex(regex))
@@ -116,8 +137,11 @@ object Utils {
 
     fun readUrl(urlString: String): String? {
         return try {
-            val url = URL(urlString)
-            val reader = BufferedReader(InputStreamReader(url.openStream()))
+            val connection = URL(urlString).openConnection().apply {
+                connectTimeout = 10_000
+                readTimeout = 10_000
+            }
+            val reader = BufferedReader(InputStreamReader(connection.getInputStream()))
             val buffer = StringBuilder()
             val chars = CharArray(1024)
             var read: Int
