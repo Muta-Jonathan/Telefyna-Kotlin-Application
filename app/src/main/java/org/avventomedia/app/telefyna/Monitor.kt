@@ -291,7 +291,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         })
 
         // handle any uncaught exception
-        Thread.setDefaultUncaughtExceptionHandler(TelefynaUnCaughtExceptionHandler())
+        // Install once per process: on Activity recreation the current default is already ours, and wrapping it again
+        // would chain our handler to itself
+        if (Thread.getDefaultUncaughtExceptionHandler() !is TelefynaUnCaughtExceptionHandler) {
+            Thread.setDefaultUncaughtExceptionHandler(TelefynaUnCaughtExceptionHandler())
+        }
         if (intent.getBooleanExtra(TelefynaUnCaughtExceptionHandler.CRASH, false)) {
             intent.getStringExtra(TelefynaUnCaughtExceptionHandler.EXCEPTION)
                 ?.let { Logger.log(AuditLog.Event.CRASH, it) }
