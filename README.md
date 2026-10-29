@@ -284,7 +284,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [ ] Investigate bumpers missing when loaded from scheduler.
 - [x] Handle player idling on stream; resume play/seekTo.
 - [ ] Add support for automatic drive syncing.
-- [ ] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30. Likely addressed by #85 and #86; verify on a box before closing.
+- [x] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30. Fixed by #85 (no Activity rebuild when a Bluetooth remote/keyboard connects or disconnects; verified with a virtual Bluetooth keyboard on the Android TV 13 emulator) and #86 (Bluetooth audio route changes no longer pause playout).
 - [ ] Support YouTube links and streams.
 - [ ] Build reports from audits.
 - [ ] Read satellite channels and decoders as local playlists and streams.
