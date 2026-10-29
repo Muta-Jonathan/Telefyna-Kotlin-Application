@@ -109,9 +109,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private val IO_ERROR_CODES = 2000..2999
     }
 
-    // Always in the audio chain; enabled/disabled from config on every (re)load without rebuilding the player
-    private val loudnessLeveling = LoudnessLevelingAudioProcessor()
-
     private var isMaintenanceStarted = false
     private var activeLogoState: String? = null
     private var activeTickerState: String? = null
@@ -134,6 +131,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var failedBecauseOfInternetIndex: Int? = null
 
     private var player: ExoPlayer? = null
+    // Always in the audio chain; enabled/disabled from config on every (re)load without rebuilding the player
+    private val loudnessLeveling = LoudnessLevelingAudioProcessor()
     private var previousPlayer: ExoPlayer? = null
     private var currentPlaylist: Playlist? = null
     private var playlistByIndex: MutableList<Playlist> = mutableListOf()
