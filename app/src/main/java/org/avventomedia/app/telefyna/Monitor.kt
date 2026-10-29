@@ -460,13 +460,19 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         player = if (renderersFactory != null) {
             ExoPlayer.Builder(context, renderersFactory)
-                .setAudioAttributes(audioAttributes, true)
-                .setHandleAudioBecomingNoisy(true)
+                // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
+                // and hold wake + wifi locks so the stream isn't dropped by power saving
+                .setAudioAttributes(audioAttributes, false)
+                .setHandleAudioBecomingNoisy(false)
+                .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
                 .build()
         } else {
             ExoPlayer.Builder(context)
-                .setAudioAttributes(audioAttributes, true)
-                .setHandleAudioBecomingNoisy(true)
+                // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
+                // and hold wake + wifi locks so the stream isn't dropped by power saving
+                .setAudioAttributes(audioAttributes, false)
+                .setHandleAudioBecomingNoisy(false)
+                .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
                 .build()
         }
 
