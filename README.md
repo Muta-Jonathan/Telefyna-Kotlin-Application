@@ -102,7 +102,7 @@ graph TD
 > Full details, file references and fixes: [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md)
 
 - [ ] **Midnight Maintenance Race:** Playlist table is cleared before the schedule reloads and `ipinfo` metrics have no timeout, causing IndexOutOfBounds crashes/restarts around midnight (P0-1).
-- [ ] **Watchdog Relaunch Blocked on Android 10+:** Background activity starts from receivers/alarms are blocked; run as HOME launcher / Device Owner kiosk or grant overlay permission (P0-2).
+- [ ] **Verify Watchdog Relaunch on Android 14+:** Relaunch confirmed working on Android 12 (foreground service keeps it eligible); verify on Android 14+ and on real boxes at boot (P0-2).
 - [ ] **Activity Recreated on HDMI/Bluetooth Changes:** Declare full `configChanges` so display or remote changes don't restart playout (P0-3).
 - [ ] **Player Pauses on Audio Focus/Noisy Events:** Disable audio-focus and becoming-noisy handling, add `WAKE_MODE_NETWORK` (P0-4).
 - [ ] **Player Left Idle After Errors:** Re-`prepare()` after skipping items, handle BehindLiveWindow by error code instead of switching to fillers (P0-5).
