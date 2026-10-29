@@ -38,6 +38,8 @@ class AuditLog {
         PLAYLIST_COMPLETED("$SPLITTER] Completed playing playlist: %s"),
         PLAYLIST_EXHAUSTED("$SPLITTER] Exhausted all media items in folder for playlist: %s. Last played item: %s. Switching to filler."),
         PLAYLIST_ERROR("$SPLITTER] Error playing playlist: %s"),
+        PLAYLIST_PRE_APPENDED("Queued next playlist for gapless transition: %s"),
+        PLAYLIST_GAPLESS("$SPLITTER] Gapless transition from playlist: %s to: %s"),
 
         // player
         DISPLAY_LOGO_OFF("Turning OFF Logo"),
@@ -72,7 +74,7 @@ class AuditLog {
             val schedulers = arrayOf(
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,
                 PLAYLIST_EMPTY_PLAY, PLAYLIST_MODIFIED, PLAYLIST_ITEM_CHANGE,
-                PLAYLIST_COMPLETED, PLAYLIST_ERROR, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
+                PLAYLIST_COMPLETED, PLAYLIST_ERROR, PLAYLIST_PRE_APPENDED, PLAYLIST_GAPLESS, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
                 DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
                 DISPLAY_PROGRAM_WATERMARK_OFF, DISPLAY_LIVE_LOGO_ON,
                 DISPLAY_REPEAT_PROGRAM_WATERMARK_ON
