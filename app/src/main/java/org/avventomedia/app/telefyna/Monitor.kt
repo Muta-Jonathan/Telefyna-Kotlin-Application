@@ -50,6 +50,7 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.apache.commons.lang3.StringUtils
@@ -136,6 +137,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private lateinit var tickerRecyclerView: RecyclerView
     private lateinit var tickerAdapter: TickerAdapter
     private var lowerThirdView: VideoView? = null
+    // Pending delayed graphics; cancelled on switch so the previous playlist's graphics never air over the next one
+    private var tickerJob: Job? = null
+    private val lowerThirdJobs = mutableListOf<Job>()
 
     private var lowerThirdLoop = 1
     private var fillingForLackOfInternet = false
@@ -1344,6 +1348,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         // Only hide/reload ticker if ticker configuration has changed across playlists
         if (newTickerState != activeTickerState) {
+            tickerJob?.cancel()
+            tickerJob = null
             if (::tickerRecyclerView.isInitialized) {
                 hideTicker()
             }
@@ -1360,7 +1366,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     } else {
                         // Future start time -> schedule delay
                         val delayMillis = start - nowPosition
-                        lifecycleScope.launch {
+                        tickerJob = lifecycleScope.launch {
                             delay(delayMillis)
                             showTicker(newsData)
                         }
@@ -1378,7 +1384,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 ?.let { it2 -> triggerRepeatWatermark(it2) }
         }
 
-        // Handle lowerThird
+        // Handle lowerThird (always rescheduled from the current position)
+        lowerThirdJobs.forEach { it.cancel() }
+        lowerThirdJobs.clear()
         val lowerThirds = graphics?.lowerThirds
         lowerThirds?.forEach { ltd ->
             if (StringUtils.isNotBlank(ltd.starts) && ltd.file != null) {
@@ -1387,7 +1395,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     if (start >= nowPosition) {
                         val delayMillis = start - nowPosition
                         if (delayMillis > 0) {
-                            lifecycleScope.launch {
+                            lowerThirdJobs += lifecycleScope.launch {
                                 delay(delayMillis)
                                 showLowerThird(ltd)
                             }
