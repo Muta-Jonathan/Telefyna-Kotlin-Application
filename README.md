@@ -71,6 +71,7 @@ Telefyna turns an Android TV box into an automated broadcast playout. It plays l
 telefyna/
 ├── config.json              # schedule and settings (from the configuration tool)
 ├── logo.png                 # station logo (png | jpg | webp | gif)
+├── slate.png                # optional "We'll be right back" artwork (png | jpg | webp | gif); built-in card otherwise
 ├── playlist/
 │   ├── sermons/             # one folder per playlist (urlOrFolder); subfolders allowed
 │   └── fillers/
@@ -100,6 +101,8 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `name`, `version` | Station name and your own config version |
 | `wait` | Seconds between watchdog checks, and how long to wait for internet (default 30) |
 | `auditRetentionDays` | Days of daily audit logs to keep (default 60; `0` keeps everything) |
+| `loudnessLeveling` | `true` levels loudness between programmes, bumpers and streams (default `false`) |
+| `loudnessTargetDbfs` | Target programme level in dBFS RMS when levelling (default `-20`) |
 | `automationDisabled` | `true` plays only the first playlist, with no schedule |
 | `notificationsDisabled` | Hide the playback notification |
 | `alerts` | Email alerts: `mailer` (SMTP) and `subscribers` (emails, event category, attachments) |
@@ -154,6 +157,9 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 - **Survives display changes:** HDMI re-handshakes, TV power cycles and Bluetooth remotes no longer restart playout.
 - **Error recovery:** bad or corrupt items are skipped, live streams rejoin the live edge after `BehindLiveWindow`, and network errors fall back to fillers and retry.
 - **Bad config uploads** are rejected and the last known good configuration keeps airing.
+- **Never a black screen:** when nothing can play (no config, empty playlists), a "We'll be right back" slate is shown (your own `slate.png` if present) and clears by itself once content is back.
+- **Crash-loop safe mode:** after 3 crashes in 10 minutes Telefyna airs fillers only (no schedules or graphics); after 5, the slate only. It returns to normal after 15 minutes without a crash.
+- **Loudness levelling** (optional): keeps programmes, adverts and streams at a consistent level, with a limiter that prevents clipping.
 - **Clock changes:** when the clock jumps (e.g. NTP after boot on RTC-less boxes) or the timezone changes, the day is rescheduled.
 - **Midnight maintenance** reloads the config, logs device metrics, and reschedules the day without interrupting playout.
 - **Audit logs:** one file per day in `telefynaAudit/`, kept for `auditRetentionDays` (default 60, `0` keeps everything). On Android 11+ they also record the OS kill reason (`LOW_MEMORY`, `CRASH`, `ANR`, …) after a restart.
@@ -227,7 +233,7 @@ The target architecture (a schedule engine and player service separated from the
 - [x] **Player Pauses on Audio Focus/Noisy Events:** Audio focus and becoming-noisy handling disabled, `WAKE_MODE_NETWORK` added (P0-4, #86).
 - [x] **Player Left Idle After Errors:** Errors classified by code, bad files skipped with re-`prepare()`, BehindLiveWindow rejoins the live edge (P0-5, #87).
 - [x] **KeepOnAir Stops Rescheduling:** Heartbeat re-armed first on every path, and the config is retried when nothing is on air (P0-6, #88).
-- [ ] **Config Validation & Fallback Slate:** Catch malformed JSON/times, keep last-known-good config, built-in emergency slate, crash-loop safe mode (P0-7). Config validation and last-known-good fallback merged (#89); emergency slate and crash-loop safe mode in #141.
+- [x] **Config Validation & Fallback Slate:** Bad configs fall back to the last known good one (#89); "We'll be right back" slate instead of a black screen and crash-loop safe mode (#141) (P0-7).
 - [x] **Clock Trust at Boot:** Maintenance re-runs when the clock jumps or the timezone changes, with a warning when the clock looks unset (P0-8, #90).
 - [x] **Main-Thread Network and Disk Blocking:** Reachability probe and audit-log writes moved off the main thread; persistent duration index follows with the gap-fillers work (P0-9, #91).
 - [x] **Date-Only Schedules Play Daily:** Date-only schedules now air only on their dates (P1-1, #125).
@@ -236,7 +242,7 @@ The target architecture (a schedule engine and player service separated from the
 - [x] **Stale Graphics After Switch:** Pending ticker and lower-third jobs are cancelled on playlist switch (P1-5, #130).
 - [x] **Programs Spanning Midnight Cut Off:** Midnight maintenance lets a running scheduled slot finish; start times compared numerically (P1-6, #131).
 - [ ] **Periodic Resume Position Saving:** Persist resume point every few seconds and by file identity, not index (P1-7). Periodic saving merged (#139); resuming by file identity still open.
-- [ ] **Loudness Normalisation:** EBU R128 / ATSC A/85 level matching between items (P1-8).
+- [x] **Loudness Normalisation:** Real-time loudness levelling (AGC + limiter) between programmes, bumpers and streams, opt-in via `loudnessLeveling` (P1-8, #142). Pre-measured per-file EBU R128 loudness remains a possible refinement.
 - [x] **Lock Out Remote Media Keys:** Verified not needed: remote media keys don't reach the player (P1-11).
 - [x] **Unexport Internal Receivers:** `PlaylistScheduler` no longer exported (P2-1, #132).
 - [x] **Android TV Launcher Entry:** `LEANBACK_LAUNCHER` category and a 320x180 banner added (P2-2, #133).
@@ -273,10 +279,10 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [ ] Test if dates down the playlist overwrite the schedule.
 - [ ] Test playlist modification, etc.
 - [ ] Handle current play at switch not buffering video.
-- [ ] Log every keypress.
+- [x] Log every keypress.
 - [ ] Fix Swift bug: don't override, just replace manually.
 - [ ] Investigate bumpers missing when loaded from scheduler.
-- [ ] Handle player idling on stream; resume play/seekTo.
+- [x] Handle player idling on stream; resume play/seekTo.
 - [ ] Add support for automatic drive syncing.
 - [ ] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30. Likely addressed by #85 and #86; verify on a box before closing.
 - [ ] Support YouTube links and streams.
@@ -295,6 +301,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - Midnight maintenance race fixed (#84). Playout survives HDMI, display and Bluetooth changes (#85). No more pausing on audio focus or noisy events (#86). Player recovers after errors (#87). Watchdog always re-armed (#88).
 - Bad config uploads fall back to the last known good config (#89). Reschedule on clock/timezone changes (#90). Network probing and log writes off the main thread (#91). Date-only schedules fixed (#125). Plain http:// streams allowed (#127). SRT streams actually play (#128). No more seeking live streams on every rebuffer (#129). Stale graphics cancelled on switch (#130). Programmes no longer cut at midnight (#131). Other apps can no longer switch the channel (#132). Telefyna appears in the Android TV launcher (#133).
 - Logs and control files back at the storage root (#134). Email alerts fixed (#135). Old audit logs pruned (#136). Issue-sync verifies TLS and pages through all issues (#137). Crash handler hands over to Android when it can't restart (#138). Resume points saved every 15 s (#139). Watchdog relaunch exempted from Android's background-start limits (#140).
+- Emergency slate and crash-loop safe mode (#141). Loudness levelling (#142). README reorganised; AGPL-3.0 + commercial dual licence (#143).
 </details>
 
 <details>
