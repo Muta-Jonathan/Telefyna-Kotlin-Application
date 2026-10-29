@@ -190,10 +190,15 @@ class Maintenance {
     @RequiresApi(Build.VERSION_CODES.O)
     private fun playCurrentSlot() {
         if (startedSlotsToday.isNotEmpty()) {
-            val slots = startedSlotsToday.keys.toList().sortedDescending()
+            // Latest started slot wins; compare as minutes ("9:00" sorts after "10:00" as a string)
+            val slots = startedSlotsToday.keys.toList().sortedByDescending { startMinutes(it) }
             val currentPlaylist = startedSlotsToday[slots[0]]
             // isCurrentSlot should only be true here
             Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, Monitor.instance!!)
+        } else if (Monitor.instance?.isPlayingScheduledSlot() == true) {
+            // Midnight maintenance before today's first slot: let yesterday's programme run to its end
+            // (finite playlists hand over to fillers on completion) instead of cutting it at 00:00
+            Logger.log(AuditLog.Event.PLAYLIST_CARRY_OVER, Monitor.instance!!.getNowPlayingLabel())
         } else { // Play first default
             Monitor.instance?.let { Monitor.instance!!.switchNow(it.getFirstDefaultIndex(), false, Monitor.instance!!) }
         }
@@ -218,6 +223,11 @@ class Maintenance {
             PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         pendingIntents[start] = alarmPendingIntent
         Monitor.instance?.alarmManager?.let { Utils.setExactAlarm(it, millis, alarmPendingIntent) }
+    }
+
+    private fun startMinutes(start: String): Int {
+        val parts = start.split(":")
+        return (parts[0].trim().toIntOrNull() ?: 0) * 60 + (parts.getOrNull(1)?.trim()?.toIntOrNull() ?: 0)
     }
 
     /*
