@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config xmlns:tools="http://schemas.android.com/tools">
-    <base-config>
+    <!-- Many HLS/IPTV encoders and LAN streams are plain http://; targetSdk 28+ refuses cleartext by default -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system"/>
             <certificates src="user"

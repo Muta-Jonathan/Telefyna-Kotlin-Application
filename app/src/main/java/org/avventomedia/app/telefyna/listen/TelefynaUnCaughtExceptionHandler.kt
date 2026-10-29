@@ -41,6 +41,7 @@ class TelefynaUnCaughtExceptionHandler(
             Logger.log(AuditLog.Event.ERROR, "${ex::class.simpleName}: ${ex.message}")
         }
 
+        Logger.flush() // make sure the crash line reaches disk before the process goes
         if (context != null) {
             context.restartApp()
         } else {
