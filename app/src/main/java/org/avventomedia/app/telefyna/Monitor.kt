@@ -1037,6 +1037,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return "$playlistName #$index"
     }
 
+    /** True while a timed (scheduled) slot, not a default/filler playlist, is actually on air. */
+    fun isPlayingScheduledSlot(): Boolean {
+        return !currentPlaylist?.start.isNullOrBlank() && player?.isPlaying == true
+    }
+
+    fun getNowPlayingLabel(): String = getNowPlayingPlaylistLabel()
+
     private fun getNowPlayingPlaylistLabel(): String {
         val playlistName = nowPlayingIndex?.let { currentPlaylist?.name } ?: ""
         return "$playlistName #$nowPlayingIndex"
