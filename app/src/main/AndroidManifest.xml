@@ -37,8 +37,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <receiver android:name=".listen.PlaylistScheduler"  android:exported="true"
-            tools:ignore="ExportedReceiver" />
+        <!-- Only fired by our own AlarmManager PendingIntents; must not be reachable by other apps -->
+        <receiver android:name=".listen.PlaylistScheduler" android:exported="false" />
         <receiver android:name=".listen.MaintenanceReceiver" android:exported="false" />
         <receiver android:name=".listen.KeepOnAirReceiver" android:exported="false">
             <intent-filter>
