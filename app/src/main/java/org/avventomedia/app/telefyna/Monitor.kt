@@ -691,8 +691,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                         // into ExoPlayer's playlist queue while the main program is already playing.
                                         lifecycleScope.launch(Dispatchers.Main) {
                                             if (player != null && currentPlaylist == capturedPlaylist) {
-                                                programItems.addAll(fittingOutroBumpers)
-                                                player!!.addMediaItems(fittingOutroBumpers)
+                                                // Insert right after this playlist's own items: the next playlist may already be
+                                                // pre-appended behind them, and bumpers must stay part of (and tagged as) this playlist
+                                                val bumpers = fittingOutroBumpers.map { b -> b.buildUpon().setTag(index).build() }
+                                                val insertAt = programItems.size
+                                                programItems.addAll(bumpers)
+                                                player!!.addMediaItems(insertAt, bumpers)
                                             }
                                         }
                                     }
@@ -740,6 +744,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         player!!.playWhenReady = true
                         playerView.player = player // Explicitly attach new player to PlayerView
                         player!!.addListener(this) // Add listener once
+                        // The listener is attached after setMediaItems, so the initial item transition is never seen:
+                        // pre-append here when we start on the last item (e.g. single-item playlists)
+                        val finitePlaylist = currentPlaylist!!.type == Playlist.Type.LOCAL_SEQUENCED ||
+                                currentPlaylist!!.type == Playlist.Type.LOCAL_RANDOMIZED || currentPlaylist!!.isResuming()
+                        if (finitePlaylist && nowProgramItem == programItems.size - 1) {
+                            preAppendNextPlaylist()
+                        }
                         nowProgramItem?.let { programItems[it] }?.let { getMediaItemName(it) }?.let {
                             Logger.log(
                                 if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
@@ -929,7 +940,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         upcomingProgramItems = upcomingItems.map { it.buildUpon().setTag(index).build() }.toMutableList()
         player?.addMediaItems(upcomingProgramItems!!)
-        Logger.log(AuditLog.Event.PLAYLIST_SWITCH, "Pre-appended next playlist: ${playlist.name}")
+        Logger.log(AuditLog.Event.PLAYLIST_PRE_APPENDED, "${playlist.name} #$index")
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -937,8 +948,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         nowPlayingIndex?.let {
             val itemPlaylistIndex = mediaItem?.localConfiguration?.tag as? Int
             
-            // Check if we seamlessly rolled over into a pre-appended playlist
-            if (itemPlaylistIndex != null && itemPlaylistIndex != it) {
+            // Check if we seamlessly rolled over into a pre-appended playlist. A playlist that pre-appends itself
+            // (e.g. fillers after fillers) keeps the same tag, so also treat playing past our own items as a roll-over
+            val pastOwnItems = (player?.currentMediaItemIndex ?: 0) >= programItems.size
+            if (itemPlaylistIndex != null && (itemPlaylistIndex != it || pastOwnItems)) {
                 val oldPlaylistName = getNowPlayingPlaylistLabel()
                 nowPlayingIndex = itemPlaylistIndex
                 currentPlaylist = playlistByIndex[itemPlaylistIndex]
@@ -957,7 +970,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
                 
                 nowProgramItem = 0
-                Logger.log(AuditLog.Event.PLAYLIST_SWITCH, "Gapless transition complete from $oldPlaylistName to ${getNowPlayingPlaylistLabel()}")
+                Logger.log(AuditLog.Event.PLAYLIST_GAPLESS, oldPlaylistName, getNowPlayingPlaylistLabel())
             } else {
                 nowProgramItem = player?.currentMediaItemIndex
             }

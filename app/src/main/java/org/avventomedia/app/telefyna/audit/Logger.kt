@@ -35,7 +35,12 @@ class Logger {
 
         @OptIn(UnstableApi::class)
         fun logWithContext(context: Context?, event: AuditLog.Event, vararg params: Any) {
-            val message = String.format(event.message, *params)
+            // A wrong argument count in a log call must never take the broadcast down
+            val message = try {
+                String.format(event.message, *params)
+            } catch (e: java.util.IllegalFormatException) {
+                "${event.message} ${params.joinToString()}"
+            }
             if (event == AuditLog.Event.ERROR) {
                 Log.e(event.name, message)
             } else {
