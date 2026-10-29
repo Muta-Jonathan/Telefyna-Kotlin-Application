@@ -64,6 +64,7 @@ import org.avventomedia.app.telefyna.modal.LowerThird
 import org.avventomedia.app.telefyna.modal.News
 import org.avventomedia.app.telefyna.modal.Playlist
 import org.avventomedia.app.telefyna.modal.Seek
+import org.avventomedia.app.telefyna.player.LoudnessLevelingAudioProcessor
 import org.avventomedia.app.telefyna.player.SchemeRoutingDataSource
 import org.avventomedia.app.telefyna.player.TelefynaRenderersFactory
 import org.avventomedia.app.telefyna.ticker.TickerAdapter
@@ -161,6 +162,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var failedBecauseOfInternetIndex: Int? = null
 
     private var player: ExoPlayer? = null
+    // Always in the audio chain; enabled/disabled from config on every (re)load without rebuilding the player
+    private val loudnessLeveling = LoudnessLevelingAudioProcessor()
     private var previousPlayer: ExoPlayer? = null
     private var currentPlaylist: Playlist? = null
     private var playlistByIndex: MutableList<Playlist> = mutableListOf()
@@ -505,6 +508,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 Logger.log(AuditLog.Event.ERROR, "Using last known good configuration")
             }
         }
+        // Applies to a freshly loaded and a last-known-good config alike; no player rebuild needed
+        configuration?.let {
+            loudnessLeveling.enabled = it.loudnessLeveling
+            loudnessLeveling.targetDbfs = it.loudnessTargetDbfs
+        }
     }
 
     private fun readConfig(file: File): Config? {
@@ -562,7 +570,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     @OptIn(UnstableApi::class)
     private fun buildPlayer(context: Context): ExoPlayer {
         val renderersFactory = instance?.let { 
-            TelefynaRenderersFactory(it).apply {
+            TelefynaRenderersFactory(it, loudnessLeveling).apply {
                 setEnableAudioTrackPlaybackParams(true)
                 setEnableDecoderFallback(true)
             }

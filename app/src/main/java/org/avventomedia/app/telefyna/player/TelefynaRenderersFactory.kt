@@ -5,11 +5,31 @@ import android.os.Handler
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 
 @UnstableApi
-class TelefynaRenderersFactory(context: Context) : DefaultRenderersFactory(context) {
+class TelefynaRenderersFactory(
+    context: Context,
+    private val loudnessLeveling: LoudnessLevelingAudioProcessor? = null
+) : DefaultRenderersFactory(context) {
+
+    override fun buildAudioSink(
+        context: Context,
+        enableFloatOutput: Boolean,
+        enableAudioTrackPlaybackParams: Boolean
+    ): AudioSink? {
+        if (loudnessLeveling == null) {
+            return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
+        }
+        return DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .setAudioProcessors(arrayOf(loudnessLeveling))
+            .build()
+    }
 
     private val MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY_PLAYER = 10
     override fun buildVideoRenderers(

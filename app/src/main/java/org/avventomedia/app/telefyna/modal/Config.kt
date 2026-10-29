@@ -15,6 +15,10 @@ data class Config(
     var wait: Int = 30,
     // days of daily audit logs to keep on the device; 0 keeps everything
     var auditRetentionDays: Int = 60,
+    // Level loudness between programmes, bumpers and streams (automatic gain + limiter)
+    var loudnessLeveling: Boolean = false,
+    // Target programme level in dBFS RMS (about -23 LUFS for typical speech/music at -20)
+    var loudnessTargetDbfs: Double = -20.0,
     var alerts: Alerts? = null,
     var playlists: Array<Playlist>? = null,
     var schedules: Array<Schedule>? = null
