@@ -18,35 +18,41 @@ object Utils {
 
     const val COMMA_SPLITTER: String = ","
 
+    // Reachability probe result, refreshed in the background so callers (often the main thread) never block on a socket
+    @Volatile
+    private var lastProbeReachable = true
+    private val probeStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+    private const val PROBE_INTERVAL_SECONDS = 10L
+
     @JvmStatic
     fun internetConnected(context: Context? = Monitor.instance): Boolean {
+        if (context != null && !hasInternetNetwork(context)) return false
+        if (probeStarted.compareAndSet(false, true)) {
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+                Thread(r, "telefyna-net-probe").apply { isDaemon = true }
+            }.scheduleWithFixedDelay({ lastProbeReachable = probeReachable() }, 0, PROBE_INTERVAL_SECONDS, TimeUnit.SECONDS)
+        }
+        return lastProbeReachable
+    }
+
+    private fun hasInternetNetwork(context: Context): Boolean {
         return try {
-            if (context != null) {
-                val cm =
-                        context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as?
-                                android.net.ConnectivityManager
-                if (cm != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        val network = cm.activeNetwork
-                        if (network == null) return false
-                        val capabilities = cm.getNetworkCapabilities(network)
-                        if (capabilities == null ||
-                                        !capabilities.hasCapability(
-                                                android.net.NetworkCapabilities
-                                                        .NET_CAPABILITY_INTERNET
-                                        )
-                        ) {
-                            return false
-                        }
-                    } else {
-                        @Suppress("DEPRECATION") val netInfo = cm.activeNetworkInfo
-                        if (netInfo == null || !netInfo.isConnected) {
-                            return false
-                        }
-                    }
-                }
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                ?: return true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val capabilities = cm.getNetworkCapabilities(cm.activeNetwork ?: return false)
+                capabilities?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+            } else {
+                @Suppress("DEPRECATION")
+                cm.activeNetworkInfo?.isConnected == true
             }
-            // Lightweight socket reachability check (no OS process creation or FD leak)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun probeReachable(): Boolean {
+        return try {
             java.net.Socket().use { socket ->
                 socket.connect(java.net.InetSocketAddress("8.8.8.8", 53), 1500)
                 true
