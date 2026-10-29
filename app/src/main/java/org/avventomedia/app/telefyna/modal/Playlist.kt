@@ -54,9 +54,18 @@ data class Playlist(
     val isUsingExternalStorage: Boolean
         get() = usingExternalStorage
 
+    // "HH:mm" -> (hour, minute); null for blank or malformed values so a bad config can't crash scheduling
+    fun parseStart(): Pair<Int, Int>? {
+        val parts = start?.trim()?.split(":") ?: return null
+        if (parts.size != 2) return null
+        val hour = parts[0].trim().toIntOrNull() ?: return null
+        val min = parts[1].trim().toIntOrNull() ?: return null
+        return if (hour in 0..23 && min in 0..59) Pair(hour, min) else null
+    }
+
     fun isStarted(): Boolean {
         val current = Calendar.getInstance()
-        val (hour, min) = start?.split(":")?.map { it.toInt() } ?: return false
+        val (hour, min) = parseStart() ?: return false
         return hour < current[Calendar.HOUR_OF_DAY] || (hour == current[Calendar.HOUR_OF_DAY] && min <= current[Calendar.MINUTE])
     }
 
@@ -73,24 +82,21 @@ data class Playlist(
     }
 
     fun getStartTime(): Calendar? {
-        val start = start ?: return null
-        if (start.isNotBlank()) {
-            val startTime = Calendar.getInstance()
-            val (hour, min) = start.split(":").map { it.toInt() }
-            startTime.set(Calendar.HOUR_OF_DAY, hour)
-            startTime.set(Calendar.MINUTE, min)
-            startTime.set(Calendar.SECOND, 0)
-            startTime.set(Calendar.MILLISECOND, 0)
-            return startTime
-        }
-        return null
+        val (hour, min) = parseStart() ?: return null
+        val startTime = Calendar.getInstance()
+        startTime.set(Calendar.HOUR_OF_DAY, hour)
+        startTime.set(Calendar.MINUTE, min)
+        startTime.set(Calendar.SECOND, 0)
+        startTime.set(Calendar.MILLISECOND, 0)
+        return startTime
     }
 
     fun scheduledToday(): Boolean {
-        if (!active || start.isNullOrBlank()) {
+        if (!active || parseStart() == null) {
             return false
         } else if (days.isNullOrEmpty()) {
-            return true
+            // No weekdays: runs daily unless restricted to specific dates
+            return dates.isNullOrEmpty() || dates!!.contains(SimpleDateFormat(DATE_FORMAT).format(Calendar.getInstance().time))
         }
         val now = Calendar.getInstance()
         val dateFormat = SimpleDateFormat(DATE_FORMAT)
