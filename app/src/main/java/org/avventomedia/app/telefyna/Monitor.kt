@@ -39,8 +39,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
-import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -74,7 +72,6 @@ import java.io.FileWriter
 import java.io.IOException
 import java.io.UnsupportedEncodingException
 import java.net.URLDecoder
-import java.net.UnknownHostException
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -103,6 +100,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private val gson = GsonBuilder().setPrettyPrinting().create()
         private val possibleExtensions = listOf("webp", "png", "jpg", "gif")
         private val durationCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Long>>()
+        private const val RETRY_PREPARE_DELAY = 5000L
+        // PlaybackException.ERROR_CODE_IO_* (2000-2999)
+        private val IO_ERROR_CODES = 2000..2999
     }
 
     private var isMaintenanceStarted = false
@@ -959,45 +959,46 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             return
         }
 
-        Logger.log(AuditLog.Event.ERROR, "${error.cause}: ${error.message}")
+        Logger.log(AuditLog.Event.ERROR, "${error.errorCodeName}: ${error.cause}: ${error.message}")
         currentPlaylist?.type?.name?.let { cacheNowPlaying(it.startsWith("LOCAL_RESUMING")) }
 
-        // keep reloading existing program if internet is on and off
-        when (error.cause?.cause) {
-            is UnknownHostException, is IOException -> {
+        // Classify by errorCode: the cause chain depth varies between data sources
+        when {
+            error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> {
+                // Routine HLS/DASH hiccup: rejoin the live edge instead of leaving the stream
+                Logger.log(AuditLog.Event.ERROR, "Fell behind live window, rejoining live edge")
+                player?.seekToDefaultPosition()
+                player?.prepare()
+            }
+            currentPlaylist?.type == Playlist.Type.ONLINE && error.errorCode in IO_ERROR_CODES -> {
                 Logger.log(AuditLog.Event.NO_INTERNET, "Failing to play program because of no internet connection")
                 failedBecauseOfInternetIndex = nowPlayingIndex
-                
+
                 // Fall back to fillers if the internet goes down, but only if fillers are actually installed
                 // (to prevent an infinite loop of bouncing between the online stream and empty fillers)
-                if (nowPlayingIndex != getSecondDefaultIndex()) {
-                    val fillersPlaylist = configuration?.playlists?.getOrNull(getSecondDefaultIndex())
-                    if (fillersPlaylist != null && maintenance?.retrievePrograms(fillersPlaylist)?.isNotEmpty() == true) {
-                        fillingForLackOfInternet = true
-                        switchNow(getSecondDefaultIndex(), false, this)
-                    }
-                }
-            }
-            is UnrecognizedInputFormatException -> {
-                Logger.log(AuditLog.Event.ERROR, "Broken video format detected: ${currentItem?.mediaId}")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    handlePlaybackCrash(currentItem)
-                }
-            }
-            is MediaCodecRenderer.DecoderInitializationException -> {
-                Logger.log(AuditLog.Event.ERROR, "Decoder error on: ${currentItem?.mediaId}")
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    handlePlaybackCrash(currentItem)
+                val fillersPlaylist = configuration?.playlists?.getOrNull(getSecondDefaultIndex())
+                if (nowPlayingIndex != getSecondDefaultIndex() && fillersPlaylist != null &&
+                    maintenance?.retrievePrograms(fillersPlaylist)?.isNotEmpty() == true) {
+                    fillingForLackOfInternet = true
+                    switchNow(getSecondDefaultIndex(), false, this)
+                } else {
+                    retryPrepareLater()
                 }
             }
             else -> {
-                if (!player?.isPlaying!!) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        handlePlaybackCrash(currentItem)
-                    }
-                }
+                Logger.log(AuditLog.Event.ERROR, "Unplayable item: ${currentItem?.mediaId}")
+                handlePlaybackCrash(currentItem)
             }
         }
+    }
+
+    // A failed player sits in STATE_IDLE until prepared again; retry instead of waiting for the KeepOnAir watchdog
+    private fun retryPrepareLater() {
+        handler?.postDelayed({
+            if (player?.playbackState == Player.STATE_IDLE) {
+                player?.prepare()
+            }
+        }, RETRY_PREPARE_DELAY)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -1009,11 +1010,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             } else {
                 nowPlayingIndex?.let { switchNow(it, false, this) }
             }
-        } else if (player?.isCurrentWindowSeekable == true) {
+        } else if (currentPlaylist?.type != Playlist.Type.ONLINE) {
+            // Local playlist: skip the bad file and carry on with the rest of the programme. A file that failed to parse
+            // is never "seekable", so gating on seekability sent the whole playlist to fillers over one bad file.
             Logger.log(AuditLog.Event.ERROR, "Skipping corrupted local file: ${currentItem?.mediaId}")
             val nextItemIndex = (player?.currentMediaItemIndex ?: 0) + 1
             if (nextItemIndex < programItems.size) {
                 player!!.seekTo(nextItemIndex, 0)
+                player!!.prepare()
             } else {
                 if (programItems.size <= 1) {
                     Logger.log(AuditLog.Event.ERROR, "Only 1 item in folder and it crashed. Switching to filler to prevent infinite loop.")
@@ -1028,11 +1032,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         switchNow(getSecondDefaultIndex(), false, this)
                     } else {
                         player!!.seekTo(0, 0)
+                        player!!.prepare()
                     }
                 }
             }
         } else if (nowPlayingIndex != getSecondDefaultIndex()) {
             switchNow(getSecondDefaultIndex(), false, this)
+        } else {
+            retryPrepareLater()
         }
     }
 
