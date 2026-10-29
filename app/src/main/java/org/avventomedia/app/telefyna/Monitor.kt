@@ -881,9 +881,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
 
                 Player.STATE_BUFFERING -> {
-                    if (currentPlaylist?.type == Playlist.Type.ONLINE) {
-                        player?.seekTo(player!!.contentDuration) // hack
-                    }
+                    // Let live streams buffer: seeking here restarted RTMP/SRT connections on every rebuffer.
+                    // Falling behind the live window is handled in onPlayerError.
                     player?.playWhenReady = true // Ensure playback resumes smoothly
                 }
             }
