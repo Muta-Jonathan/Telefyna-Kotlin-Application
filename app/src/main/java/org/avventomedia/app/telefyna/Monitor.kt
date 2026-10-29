@@ -39,6 +39,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -62,6 +63,7 @@ import org.avventomedia.app.telefyna.modal.LowerThird
 import org.avventomedia.app.telefyna.modal.News
 import org.avventomedia.app.telefyna.modal.Playlist
 import org.avventomedia.app.telefyna.modal.Seek
+import org.avventomedia.app.telefyna.player.SchemeRoutingDataSource
 import org.avventomedia.app.telefyna.player.TelefynaRenderersFactory
 import org.avventomedia.app.telefyna.ticker.TickerAdapter
 import org.avventomedia.app.telefyna.ticker.TickerItem
@@ -501,6 +503,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         player = if (renderersFactory != null) {
             ExoPlayer.Builder(context, renderersFactory)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(SchemeRoutingDataSource.Factory(context)))
                 // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
                 // and hold wake + wifi locks so the stream isn't dropped by power saving
                 .setAudioAttributes(audioAttributes, false)
@@ -509,6 +512,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 .build()
         } else {
             ExoPlayer.Builder(context)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(SchemeRoutingDataSource.Factory(context)))
                 // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
                 // and hold wake + wifi locks so the stream isn't dropped by power saving
                 .setAudioAttributes(audioAttributes, false)
