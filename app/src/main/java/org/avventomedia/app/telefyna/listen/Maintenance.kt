@@ -29,6 +29,7 @@ import java.util.Calendar
 class Maintenance {
     companion object {
         private const val QUERY_PARAM_PASSCODE = "passcode"
+        private const val MIN_PLAUSIBLE_YEAR = 2025
     }
 
     private var startedSlotsToday: MutableMap<String, CurrentPlaylist> = HashMap()
@@ -91,6 +92,13 @@ class Maintenance {
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     fun run() {
+        Monitor.instance?.let {
+            DateChange.rememberClock(it)
+            if (Calendar.getInstance()[Calendar.YEAR] < MIN_PLAUSIBLE_YEAR) {
+                // RTC-less box before NTP sync; DateChange reschedules once the clock is corrected
+                Logger.log(AuditLog.Event.ERROR, "Device clock looks unset: ${Calendar.getInstance().time}")
+            }
+        }
         // This may cause a null pointer exception if config is not available and restarts it
         triggerMaintenance()
         Logger.log(AuditLog.Event.HEARTBEAT, "ON")
