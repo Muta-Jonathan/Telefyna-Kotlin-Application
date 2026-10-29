@@ -41,6 +41,7 @@ class TelefynaUnCaughtExceptionHandler(
             Logger.log(AuditLog.Event.ERROR, "${ex::class.simpleName}: ${ex.message}")
         }
 
+        context?.let { Monitor.recordCrash(it) } // feeds crash-loop safe mode on the next start
         Logger.flush() // make sure the crash line reaches disk before the process goes
         if (context != null) {
             context.restartApp()

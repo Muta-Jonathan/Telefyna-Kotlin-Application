@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@android:color/black"
     android:keepScreenOn="true"
-    android:orientation="vertical"
     tools:context=".Monitor">
 
     <androidx.media3.ui.PlayerView
@@ -23,4 +23,44 @@
         app:keep_content_on_player_reset="true"
         app:resize_mode="fill"/>
 
-</androidx.appcompat.widget.LinearLayoutCompat>
+    <!-- Emergency slate: covers the screen whenever nothing can be played, so viewers never see a black screen -->
+    <FrameLayout
+        android:id="@+id/slate"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/black"
+        android:visibility="gone">
+
+        <!-- Operator-supplied <telefyna>/slate.(png|jpg|webp|gif); replaces the built-in card when present -->
+        <ImageView
+            android:id="@+id/slateImage"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/slate_message"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/slateDefault"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <ImageView
+                android:layout_width="160dp"
+                android:layout_height="160dp"
+                android:contentDescription="@string/app_name"
+                android:src="@mipmap/ic_launcher_foreground" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/slate_message"
+                android:textColor="@android:color/white"
+                android:textSize="34sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+</FrameLayout>
