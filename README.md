@@ -98,6 +98,46 @@ graph TD
 - [ ] **Fallback Local Caching:** Automatically download and cache a rolling 24-hour window of `ONLINE` stream segments in case the internet goes down completely.
 - [ ] **HDMI CEC Control:** Support turning the physical TV screen on/off via HDMI-CEC commands based on business hours.
 
+### Stability & Broadcast-Quality Fixes (Audit Oct 2026)
+> Full details, file references and fixes: [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md)
+
+- [ ] **Midnight Maintenance Race:** Playlist table is cleared before the schedule reloads and `ipinfo` metrics have no timeout, causing IndexOutOfBounds crashes/restarts around midnight (P0-1).
+- [ ] **Watchdog Relaunch Blocked on Android 10+:** Background activity starts from receivers/alarms are blocked; run as HOME launcher / Device Owner kiosk or grant overlay permission (P0-2).
+- [ ] **Activity Recreated on HDMI/Bluetooth Changes:** Declare full `configChanges` so display or remote changes don't restart playout (P0-3).
+- [ ] **Player Pauses on Audio Focus/Noisy Events:** Disable audio-focus and becoming-noisy handling, add `WAKE_MODE_NETWORK` (P0-4).
+- [ ] **Player Left Idle After Errors:** Re-`prepare()` after skipping items, handle BehindLiveWindow by error code instead of switching to fillers (P0-5).
+- [ ] **KeepOnAir Stops Rescheduling:** Always reschedule the heartbeat (reboot path, internet-restore path, null playlist) (P0-6).
+- [ ] **Config Validation & Fallback Slate:** Catch malformed JSON/times, keep last-known-good config, built-in emergency slate, crash-loop safe mode (P0-7).
+- [ ] **Clock Trust at Boot:** Re-run maintenance on TIME_SET/TIMEZONE_CHANGED and wait for a valid clock on RTC-less boxes (P0-8).
+- [ ] **Main-Thread Network and Disk Blocking:** Move internet checks, duration probing and log writes off the main thread (P0-9).
+- [ ] **Date-Only Schedules Play Daily:** `Playlist.scheduledToday()` ignores `dates` when `days` is empty (P1-1).
+- [ ] **SRT Media Source Discarded:** SRT/RTMP sources are built then thrown away; route by URI scheme in a custom MediaSource factory (P1-2).
+- [ ] **Cleartext HTTP Streams Blocked:** Allow cleartext in the network security config for http:// HLS/IPTV (P1-3).
+- [ ] **Stale Graphics After Switch:** Cancel pending ticker/lower-third jobs when the playlist changes (P1-5).
+- [ ] **Programs Spanning Midnight Cut Off:** Carry yesterday's active slot across the 00:00 boundary (P1-6).
+- [ ] **Periodic Resume Position Saving:** Persist resume point every few seconds and by file identity, not index (P1-7).
+- [ ] **Loudness Normalisation:** EBU R128 / ATSC A/85 level matching between items (P1-8).
+- [ ] **Lock Out Remote Media Keys:** Prevent remote play/pause/next from altering the broadcast (P1-11).
+- [ ] **Unexport Internal Receivers:** `PlaylistScheduler` is exported without permission, any app can switch the channel (P2-1).
+- [ ] **Android TV Launcher Entry:** Add `LEANBACK_LAUNCHER` category and a 320x180 banner (P2-2).
+- [ ] **Control Files Unreachable on Android 11+:** Move `init.txt`/`restart.txt`/`reboot.txt` out of `Android/data` (P2-3).
+- [ ] **Email Alert Storm and BCC Leak:** Digest alerts, per-subscriber drafts, honour `eventCategory`, fix audit attachments (P2-4, P2-5).
+- [ ] **Audit Log Rotation:** Prune/rotate daily logs so long-running boxes don't fill storage (P3).
+- [ ] **Extract ScheduleEngine and PlayoutService:** Move scheduling into a unit-tested pure-Kotlin engine and the player into a MediaSessionService (P3).
+
+### Commercial Platform (Future)
+Telefyna is planned to become a generic, white-label playout product sold on subscription. The device-side work below comes first; the cloud dashboard and billing will be a separate project.
+
+- [ ] **White-Label / De-branding:** Remove hard-coded station and organisation references; branding, slate and notification text come from config.
+- [ ] **Device Registration & Pairing:** Stable device ID with an on-screen pairing code claimed from the dashboard.
+- [ ] **Remote Device API:** Authenticated HTTPS channel for config push, commands (reload, restart, screenshot) and telemetry, replacing FTP file drops.
+- [ ] **Fleet Dashboard & Tracking:** Live heartbeat, now-playing, confidence thumbnails, device metrics, alerts and as-run reports per device and tenant.
+- [ ] **Structured As-Run Log:** Machine-readable record of every aired item (actual start/end/source) for reporting, ad billing and compliance.
+- [ ] **Subscription Licensing & Timeouts:** Signed licence token with plan, features and expiry, verified offline; graceful degradation (reminder, watermark, fillers-only) after a grace period, never a black screen.
+- [ ] **Payments & Billing:** Subscription billing (card and local mobile-money options) tied to licence issuing.
+- [ ] **Plan-Based Feature Gating:** Limit devices/channels, online streams, graphics and remote management by plan.
+- [ ] **OTA App Updates:** Staged remote rollout of new Telefyna versions across the fleet.
+
 ### Existing Backlog
 - [ ] Auto-installation of config under resources if non-existent at first run.
 - [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
@@ -108,7 +148,7 @@ graph TD
 - [ ] Log every keypress.
 - [ ] Fix Swift bug: don't override, just replace manually.
 - [ ] Investigate bumpers missing when loaded from scheduler.
-- [ ] Handle player idling on stream; resume play/seekTo.
+- [ ] Handle player idling on stream; resume play/seekTo. *(see P0-5 in the audit)*
 - [ ] Add support for automatic drive syncing.
 - [ ] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30.
 - [ ] Support YouTube links and streams.
@@ -124,6 +164,9 @@ graph TD
 - [x] **[SOLVED] Corrupted File Infinite Crash Loop:** Fixed a critical bug where decoder crashes on malformed local files (e.g. Invalid NAL length) would cause the playlist to aggressively loop and restart the same corrupted file indefinitely. The player now gracefully skips corrupted files, or safely switches to fillers if the folder is completely exhausted.
 - [x] **[SOLVED] Random Playlist Repetition:** Upgraded the random seed generation in `LOCAL_RANDOMIZED` from a predictable `System.nanoTime()` clock to the highly unpredictable `Random.Default`, permanently fixing the issue where shuffled playlists repeated identical daily sequences.
 - [x] **[SOLVED] Finite Resuming Playlist Loops:** Fixed a bug where finite resuming playlists (like `LOCAL_RESUMING_ONE`) were not fully tracked as finite. They now correctly log `PLAYLIST_EXHAUSTED` and switch to fallback fillers when their content finishes earlier than the scheduled time slot.
+- [x] **[SOLVED] Automated Testing & CI/CD:** Integrated a comprehensive JVM unit testing suite (MockK, JUnit) for core business logic (Scheduling, AuditLogs, Configs) and deployed automated GitHub Actions to verify tests on every Push and PR to `main`.
+
+### 2026 - August
 - [x] **[SOLVED] Automated Testing & CI/CD:** Integrated a comprehensive JVM unit testing suite (MockK, JUnit) for core business logic (Scheduling, AuditLogs, Configs) and deployed automated GitHub Actions to verify tests on every Push and PR to `main`.
 
 ### 2026 - July
