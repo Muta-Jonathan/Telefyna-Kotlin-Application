@@ -13,6 +13,7 @@ class AuditLog {
         KEY_PRESS("%s has been pressed"),
         CONFIGURATION("Initialized configurations"),
         MAINTENANCE("Ran maintenance"),
+        MAINTENANCE_CLEANUP("Deleted %d audit logs older than %d days"),
         CONNECTING("Connecting"),
         METRICS("%s"),
         ERROR("%s"),
@@ -64,7 +65,7 @@ class AuditLog {
 
         fun getCategory(): Category {
             val admins = arrayOf(
-                HEARTBEAT, KEY_PRESS, CONFIGURATION, MAINTENANCE,
+                HEARTBEAT, KEY_PRESS, CONFIGURATION, MAINTENANCE, MAINTENANCE_CLEANUP,
                 METRICS, ERROR, CACHE_NOW_PLAYING_RESUME, RETRIEVE_NOW_PLAYING_RESUME,
                 STUCK, INTERNET_RESTORED, EMPTY_FILLERS, CRASH, BACK_UP,
                 RESTARTING, TIME_CHANGED

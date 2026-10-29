@@ -53,6 +53,14 @@ class Maintenance {
             pendingIntents = HashMap()
             Thread {
                 Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
+                Monitor.instance?.let { monitor ->
+                    val keepDays = monitor.configuration?.auditRetentionDays ?: 0
+                    val auditDir = java.io.File(monitor.getAuditFilePath(monitor, ""))
+                    val deleted = Logger.pruneOldLogs(auditDir, keepDays)
+                    if (deleted.isNotEmpty()) {
+                        Logger.log(AuditLog.Event.MAINTENANCE_CLEANUP, deleted.size, keepDays)
+                    }
+                }
                 Logger.log(AuditLog.Event.MAINTENANCE)
                 
                 Handler(Looper.getMainLooper()).post {
