@@ -355,12 +355,23 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return File(Environment.getExternalStorageDirectory().absolutePath + postfix)
     }
 
+    /**
+     * Operator control flags (init.txt, restart.txt, ...). Primary location is <telefyna>/control/, reachable by
+     * FTP/Syncthing/file managers; on Android 11+ the legacy telefynaAudit folder lives under Android/data and isn't.
+     * The legacy location is still honoured.
+     */
+    private fun getControlFile(name: String): File {
+        val primary = File("${getProgramsFolderPath(false)}${File.separator}control${File.separator}$name")
+        val legacy = File(getAuditFilePath(this, name))
+        return if (!primary.exists() && legacy.exists()) legacy else primary
+    }
+
     private fun getRestartFile(): File {
-        return File(getAuditFilePath(this,"restart.txt"))
+        return getControlFile("restart.txt")
     }
 
     private fun getRebootFile(): File {
-        return File(getAuditFilePath(this,"reboot.txt"))
+        return getControlFile("reboot.txt")
     }
 
     private fun getAuditConfigFile(): File {
@@ -368,15 +379,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     private fun getBackupConfigFile(): File {
-        return File(getAuditFilePath(this,"backupConfig.txt"))
+        return getControlFile("backupConfig.txt")
     }
 
     private fun getBackupConfigResetFile(): File {
-        return File(getAuditFilePath(this,"backupConfigReset.txt"))
+        return getControlFile("backupConfigReset.txt")
     }
 
     private fun getReInitializerFile(): File {
-        return File(getAuditFilePath(this,"init.txt"))
+        return getControlFile("init.txt")
     }
 
     private fun getBumperDirectory(useExternalStorage: Boolean): String {
