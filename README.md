@@ -62,7 +62,7 @@ graph TD
 2. **Permissions:** Grant the app **Storage** permissions.
 3. **Configuration:** Use the [Online Configuration Tool](https://avventomedia.org/telefynaConfiguration/) to generate your `config.json`.
 4. **Local Storage:** Place your `config.json` and a `playlist/` folder inside a folder named `telefyna` on the root of your device's internal storage or SD Card.
-5. **Reloading & remote control:** Create a blank file in `telefyna/control/` to trigger an action within `wait` seconds: `init.txt` (reload configuration), `restart.txt` (restart Telefyna), `reboot.txt` (reboot, rooted devices only), `backupConfig.txt` / `backupConfigReset.txt` (write the current config with/without resume positions to the audit folder). The legacy `telefynaAudit` location still works, but on Android 11+ it is under `Android/data/` and not reachable by FTP/Syncthing.
+5. **Reloading:** To force a manual reload of configurations, create a blank file named `init.txt` in the `telefynaAudit` folder.
 
 > [!NOTE]
 > Ensure the device's Date and Timezone are set correctly, as all playlist scheduling is highly time-dependent!
