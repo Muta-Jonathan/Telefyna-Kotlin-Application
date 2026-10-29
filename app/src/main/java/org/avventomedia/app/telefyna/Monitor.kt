@@ -136,7 +136,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var lowerThirdView: VideoView? = null
 
     private var lowerThirdLoop = 1
-    private var offAir = false
     private var fillingForLackOfInternet = false
     private var nowProgramItem: Int? = 0
     private var startOnePlayProgramItem: Int? = null
@@ -1085,13 +1084,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
         maintenanceHandler?.removeCallbacksAndMessages(null)
         handler?.removeCallbacksAndMessages(null)
-        // Cancel keepOnAir alarm
-        val intent = Intent(KEEP_ON_AIR_ACTION)
-        val pendingIntent = PendingIntent.getBroadcast(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager?.cancel(pendingIntent)
+        // Deliberately keep the KeepOnAir alarm armed: it is what relaunches Telefyna if the Activity is gone
 
         Glide.get(this).clearMemory()
         Glide.get(this).trimMemory(TRIM_MEMORY_COMPLETE)
@@ -1139,6 +1132,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             if (!isMaintenanceStarted) {
                 isMaintenanceStarted = true
                 maintenance?.run()
+                scheduleKeepOnAir() // arm the watchdog even if nothing could be put on air
             }
         } else if (isAndroidTV()) {
             // Android TV / Google TV has no Settings UI for MANAGE_EXTERNAL_STORAGE.
@@ -1148,6 +1142,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             if (!isMaintenanceStarted) {
                 isMaintenanceStarted = true
                 maintenance?.run()
+                scheduleKeepOnAir()
             }
         } else {
             askForPermissions(missing)
@@ -1599,11 +1594,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager?.cancel(pendingIntent)
-        alarmManager?.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + delay,
-            pendingIntent
-        )
+        alarmManager?.let { Utils.setExactAlarm(it, System.currentTimeMillis() + delay, pendingIntent) }
     }
 
 
@@ -1661,41 +1652,46 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
      */
     @RequiresApi(Build.VERSION_CODES.O)
     fun handleKeepOnAir() {
-        when {
-            getRebootFile().exists() -> {
-                getRebootFile().delete()
-                rebootDevice()
-            }
-            getRestartFile().exists() -> {
-                getRestartFile().delete()
-                restartApp()
-            }
-            getReInitializerFile().exists() -> {
-                performRealtimeConfigReload()
-                scheduleKeepOnAir()
-            }
-            else -> {
-                if (getBackupConfigFile().exists()) backupConfig(false)
-                if (getBackupConfigResetFile().exists()) backupConfig(true)
+        // Re-arm first so no branch below (failed reboot, exception, early return) can stop the heartbeat
+        scheduleKeepOnAir()
+        try {
+            when {
+                getRebootFile().exists() -> {
+                    getRebootFile().delete()
+                    rebootDevice()
+                }
+                getRestartFile().exists() -> {
+                    getRestartFile().delete()
+                    restartApp()
+                }
+                getReInitializerFile().exists() -> performRealtimeConfigReload()
+                else -> {
+                    if (getBackupConfigFile().exists()) backupConfig(false)
+                    if (getBackupConfigResetFile().exists()) backupConfig(true)
 
-                if (nowPlayingIndex == getSecondDefaultIndex() &&
-                    fillingForLackOfInternet &&
-                    Utils.internetConnected() &&
-                    failedBecauseOfInternetIndex != null) {
-                    fillingForLackOfInternet = false
-                    Logger.log(AuditLog.Event.INTERNET_RESTORED)
-                    switchNow(failedBecauseOfInternetIndex!!, false, this)
-                    failedBecauseOfInternetIndex = null
-                } else {
-                    offAir = player == null || !player!!.isPlaying
-                    if (offAir) {
-                        offAir = false
+                    val failedIndex = failedBecauseOfInternetIndex
+                    if (nowPlayingIndex == getSecondDefaultIndex() &&
+                        fillingForLackOfInternet &&
+                        failedIndex != null &&
+                        Utils.internetConnected()) {
+                        fillingForLackOfInternet = false
+                        failedBecauseOfInternetIndex = null
+                        Logger.log(AuditLog.Event.INTERNET_RESTORED)
+                        switchNow(failedIndex, false, this)
+                    } else if (player == null || !player!!.isPlaying) {
                         Logger.log(AuditLog.Event.STUCK, (configuration?.wait ?: 0).toLong())
-                        switchNow(nowPlayingIndex!!, false, this)
+                        val index = nowPlayingIndex
+                        if (index != null) {
+                            switchNow(index, false, this)
+                        } else {
+                            // Nothing was ever put on air (e.g. config missing or unreadable): retry loading it
+                            maintenance?.run()
+                        }
                     }
-                    scheduleKeepOnAir() // Schedule the next execution
                 }
             }
+        } catch (e: Exception) {
+            Logger.log(AuditLog.Event.ERROR, "KeepOnAir check failed: ${e.message}")
         }
     }
 }

@@ -102,6 +102,21 @@ object Utils {
         }
     }
 
+    /**
+     * Exact wake-up alarm that also fires in Doze. Falls back to an inexact one if the exact-alarm
+     * permission was revoked (API 31+) instead of throwing a SecurityException.
+     */
+    fun setExactAlarm(alarmManager: android.app.AlarmManager, triggerAtMillis: Long, operation: android.app.PendingIntent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            Logger.log(AuditLog.Event.ERROR, "Exact alarms not permitted, scheduling inexact alarm")
+            alarmManager.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, operation)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, operation)
+        } else {
+            alarmManager.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, operation)
+        }
+    }
+
     fun isValidEmail(email: String): Boolean {
         val regex = "^[\\w-_\\.+]*[\\w-_\\.]\\@([\\w]+\\.)+[\\w]+[\\w]$"
         return email.matches(Regex(regex))
