@@ -116,8 +116,11 @@ object Utils {
 
     fun readUrl(urlString: String): String? {
         return try {
-            val url = URL(urlString)
-            val reader = BufferedReader(InputStreamReader(url.openStream()))
+            val connection = URL(urlString).openConnection().apply {
+                connectTimeout = 10_000
+                readTimeout = 10_000
+            }
+            val reader = BufferedReader(InputStreamReader(connection.getInputStream()))
             val buffer = StringBuilder()
             val chars = CharArray(1024)
             var read: Int

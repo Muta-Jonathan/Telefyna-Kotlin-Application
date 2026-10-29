@@ -5,8 +5,6 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.webkit.MimeTypeMap
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
@@ -46,18 +44,16 @@ class Maintenance {
         if (Monitor.instance?.configuration?.isAutomationDisabled == true) {
             val defaultIndex = Monitor.instance!!.getFirstDefaultIndex()
             val playlist = Monitor.instance?.configuration?.playlists?.get(defaultIndex)
-            playlist?.let { Monitor.instance!!.addPlayListByIndex(it) }
+            Monitor.instance!!.replacePlaylists(listOfNotNull(playlist))
             Monitor.instance!!.switchNow(defaultIndex, false, Monitor.instance!!)
         } else {
             startedSlotsToday = HashMap()
             pendingIntents = HashMap()
+            Logger.log(AuditLog.Event.MAINTENANCE)
+            schedule()
+            // Metrics do network calls; keep them off the main thread and out of the scheduling path
             Thread {
                 Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
-                Logger.log(AuditLog.Event.MAINTENANCE)
-                
-                Handler(Looper.getMainLooper()).post {
-                    schedule()
-                }
             }.start()
         }
     }
@@ -110,13 +106,14 @@ class Maintenance {
             // Build a map of playlists by ID for O(1) lookup, and store their index for state saving
             val playlistMap = mutableMapOf<String, Pair<Int, Playlist>>()
             
+            val newPlaylists = mutableListOf<Playlist>()
             var monitorIndex = 0
             // Base playlists are also added to Monitor's list (for default fallback etc)
             basePlaylists.forEachIndexed { index, playlist ->
                 if (playlist.id != null) {
                     playlistMap[playlist.id!!] = Pair(monitorIndex, playlist)
                 }
-                Monitor.instance?.addPlayListByIndex(playlist)
+                newPlaylists.add(playlist)
                 monitorIndex++
             }
 
@@ -138,13 +135,14 @@ class Maintenance {
                     if (schedule.seekTo != null) this.seekTo = schedule.seekTo!!
                 }
                 
-                Monitor.instance?.addPlayListByIndex(scheduledPlaylist)
+                newPlaylists.add(scheduledPlaylist)
 
                 if (scheduledPlaylist.scheduledToday()) {
                     schedulePlaylistAtStart(scheduledPlaylist, monitorIndex, starts)
                 }
                 monitorIndex++
             }
+            Monitor.instance?.replacePlaylists(newPlaylists)
             playCurrentSlot()
         }
     }
