@@ -103,6 +103,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private val gson = GsonBuilder().setPrettyPrinting().create()
         private val possibleExtensions = listOf("webp", "png", "jpg", "gif")
         private val durationCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Long>>()
+        private const val RESUME_SAVE_INTERVAL = 15_000L
         private const val RETRY_PREPARE_DELAY = 5000L
         // PlaybackException.ERROR_CODE_IO_* (2000-2999)
         private val IO_ERROR_CODES = 2000..2999
@@ -173,13 +174,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return getLastModifiedFor(index) - getSharedPlaylistLastModified(index)
     }
 
-    private fun trackingNowPlaying(index: Int, seekTo: Long, noProgramTransition: Boolean) {
+    private fun trackingNowPlaying(index: Int, seekTo: Long, noProgramTransition: Boolean, log: Boolean = true) {
         if (playlistByIndex[index].isResuming()) {
-            cachePlayingAt(index, seekTo, noProgramTransition)
+            cachePlayingAt(index, seekTo, noProgramTransition, log)
         }
     }
 
-    private fun cachePlayingAt(index: Int, seekTo: Long, noProgramTransition: Boolean) {
+    private fun cachePlayingAt(index: Int, seekTo: Long, noProgramTransition: Boolean, log: Boolean = true) {
         val at = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
             0
         } else {
@@ -208,7 +209,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 dateFormat?.format(Calendar.getInstance().time)
             )
             editor.apply() // Use apply instead of commit for asynchronous saving
-            Logger.log(AuditLog.Event.CACHE_NOW_PLAYING_RESUME, getPlayingAtIndexLabel(index), programName, "$at-$seekTo")
+            if (log) {
+                Logger.log(AuditLog.Event.CACHE_NOW_PLAYING_RESUME, getPlayingAtIndexLabel(index), programName, "$at-$seekTo")
+            }
         }
     }
 
@@ -313,6 +316,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         maintenanceHandler = Handler()
         handler = Handler()
         sharedPreferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+        handler?.postDelayed(resumePositionSaver, RESUME_SAVE_INTERVAL)
 
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -484,11 +488,25 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return badStart?.let { "start time '$it' is not HH:mm" }
     }
 
-    private fun cacheNowPlaying(noProgramTransition: Boolean) {
-        val playerView = getPlayerView(false)
+    private fun cacheNowPlaying(noProgramTransition: Boolean, log: Boolean = true) {
         val now = nowPlayingIndex?.let { getPlaylistIndex(it) }
         if (now != null && player != null) {
-            trackingNowPlaying(now, player!!.currentPosition, noProgramTransition)
+            trackingNowPlaying(now, player!!.currentPosition, noProgramTransition, log)
+        }
+    }
+
+    // Saves the resume point of resuming playlists while they play, so a power cut or crash resumes close to where
+    // it stopped instead of at the start of the program (positions were only saved on item transitions)
+    private val resumePositionSaver = object : Runnable {
+        override fun run() {
+            try {
+                if (player?.isPlaying == true && currentPlaylist?.isResuming() == true) {
+                    cacheNowPlaying(false, log = false)
+                }
+            } catch (e: Exception) {
+                Logger.log(AuditLog.Event.ERROR, "Saving resume position failed: ${e.message}")
+            }
+            handler?.postDelayed(this, RESUME_SAVE_INTERVAL)
         }
     }
 
