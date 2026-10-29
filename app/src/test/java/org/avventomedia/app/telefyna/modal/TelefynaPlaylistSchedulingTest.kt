@@ -37,6 +37,19 @@ class TelefynaPlaylistSchedulingTest {
     }
 
     @Test
+    fun testMalformedStartDoesNotThrow() {
+        for (bad in listOf("8:30 AM", "25:00", "12", "ab:cd", " ")) {
+            val playlist = Playlist().apply { start = bad }
+            assertEquals(null, playlist.parseStart())
+            assertFalse(playlist.isStarted())
+            assertEquals(null, playlist.getStartTime())
+            assertFalse(playlist.scheduledToday())
+        }
+        assertEquals(Pair(8, 5), Playlist(start = "08:05").parseStart())
+        assertEquals(Pair(8, 5), Playlist(start = "8:5").parseStart())
+    }
+
+    @Test
     fun testScheduledToday() {
         val now = Calendar.getInstance()
         val todayDayOfWeek = now[Calendar.DAY_OF_WEEK]

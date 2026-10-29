@@ -425,15 +425,57 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return getAuditFilePath(this,"${name}${AuditLog.ENDPOINT}")
     }
 
+    // Copy of the last config that loaded and validated, kept in app-private storage
+    private fun getLastGoodConfigFile(): File = File(filesDir, "last-good-config.json")
+
     fun initialise() {
-        try {
-            FileReader(getConfigFile()).use { reader ->
-                configuration = Gson().fromJson(BufferedReader(reader), Config::class.java)
-                Logger.log(AuditLog.Event.CONFIGURATION)
+        val config = readConfig(File(getConfigFile()))
+        if (config != null) {
+            configuration = config
+            try {
+                File(getConfigFile()).copyTo(getLastGoodConfigFile(), overwrite = true)
+            } catch (e: IOException) {
+                Logger.log(AuditLog.Event.ERROR, "Could not back up config: ${e.message}")
             }
-        } catch (e: IOException) {
-            Logger.log(AuditLog.Event.ERROR, e.message ?: "Unknown error")
+            Logger.log(AuditLog.Event.CONFIGURATION)
+        } else {
+            // Never crash-loop on a bad upload: keep airing the last config that worked
+            val lastGood = readConfig(getLastGoodConfigFile())
+            if (lastGood != null) {
+                configuration = lastGood
+                Logger.log(AuditLog.Event.ERROR, "Using last known good configuration")
+            }
         }
+    }
+
+    private fun readConfig(file: File): Config? {
+        if (!file.exists()) {
+            Logger.log(AuditLog.Event.ERROR, "Configuration not found: ${file.absolutePath}")
+            return null
+        }
+        return try {
+            val config = FileReader(file).use { reader -> Gson().fromJson(BufferedReader(reader), Config::class.java) }
+            val problem = validateConfig(config)
+            if (problem != null) {
+                Logger.log(AuditLog.Event.ERROR, "Invalid configuration ${file.name}: $problem")
+                null
+            } else {
+                config
+            }
+        } catch (e: Exception) { // IOException, JsonParseException, etc.
+            Logger.log(AuditLog.Event.ERROR, "Unreadable configuration ${file.name}: ${e.message}")
+            null
+        }
+    }
+
+    private fun validateConfig(config: Config?): String? {
+        val playlists = config?.playlists ?: return "no playlists"
+        if (playlists.size <= getSecondDefaultIndex()) {
+            return "at least 2 playlists are required (first default and fillers)"
+        }
+        val badStart = (playlists.mapNotNull { it.start } + config.schedules.orEmpty().mapNotNull { it.start })
+            .firstOrNull { it.isNotBlank() && Playlist(start = it).parseStart() == null }
+        return badStart?.let { "start time '$it' is not HH:mm" }
     }
 
     private fun cacheNowPlaying(noProgramTransition: Boolean) {

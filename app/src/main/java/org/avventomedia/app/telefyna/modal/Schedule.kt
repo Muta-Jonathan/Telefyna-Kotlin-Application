@@ -39,12 +39,12 @@ data class Schedule(
 
     fun isStarted(): Boolean {
         val current = Calendar.getInstance()
-        val (hour, min) = start?.split(":")?.map { it.toInt() } ?: return false
+        val (hour, min) = Playlist(start = start).parseStart() ?: return false
         return hour < current[Calendar.HOUR_OF_DAY] || (hour == current[Calendar.HOUR_OF_DAY] && min <= current[Calendar.MINUTE])
     }
 
     fun getScheduledTime(): Long {
-        val (hour, min) = start?.split(":")?.map { it.toInt() } ?: return 0L
+        val (hour, min) = Playlist(start = start).parseStart() ?: return 0L
         val cal = Calendar.getInstance()
         cal.set(Calendar.HOUR_OF_DAY, hour)
         cal.set(Calendar.MINUTE, min)
