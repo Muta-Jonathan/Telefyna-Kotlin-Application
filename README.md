@@ -102,7 +102,7 @@ graph TD
 > Full details, file references and fixes: [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md)
 
 - [ ] **Midnight Maintenance Race:** Playlist table is cleared before the schedule reloads and `ipinfo` metrics have no timeout, causing IndexOutOfBounds crashes/restarts around midnight (P0-1).
-- [ ] **Watchdog Relaunch Blocked on Android 10+:** Not reproduced on Android 12 (foreground service keeps relaunch allowed); still verify on Android 14+ and at boot on real boxes, fallback is HOME launcher / kiosk or overlay permission (P0-2).
+- [ ] **Watchdog Relaunch Blocked on Android 10+:** Intermittently refused ("Abort background activity starts", 2/14 crash runs on Android 12); grant overlay permission or run as HOME/kiosk (P0-2).
 - [ ] **Activity Recreated on HDMI/Bluetooth Changes:** Declare full `configChanges` so display or remote changes don't restart playout (P0-3).
 - [ ] **Player Pauses on Audio Focus/Noisy Events:** Disable audio-focus and becoming-noisy handling, add `WAKE_MODE_NETWORK` (P0-4).
 - [ ] **Player Left Idle After Errors:** Re-`prepare()` after skipping items, handle BehindLiveWindow by error code instead of switching to fillers (P0-5).
@@ -117,7 +117,7 @@ graph TD
 - [ ] **Programs Spanning Midnight Cut Off:** Carry yesterday's active slot across the 00:00 boundary (P1-6).
 - [ ] **Periodic Resume Position Saving:** Persist resume point every few seconds and by file identity, not index (P1-7).
 - [ ] **Loudness Normalisation:** EBU R128 / ATSC A/85 level matching between items (P1-8).
-- [ ] **Lock Out Remote Media Keys:** Prevent remote play/pause/next from altering the broadcast (P1-11).
+- [x] **Lock Out Remote Media Keys:** Verified not needed: remote media keys don't reach the player (P1-11).
 - [ ] **Unexport Internal Receivers:** `PlaylistScheduler` is exported without permission, any app can switch the channel (P2-1).
 - [ ] **Android TV Launcher Entry:** Add `LEANBACK_LAUNCHER` category and a 320x180 banner (P2-2).
 - [ ] **Control Files Unreachable on Android 11+:** Move `init.txt`/`restart.txt`/`reboot.txt` out of `Android/data` (P2-3).
