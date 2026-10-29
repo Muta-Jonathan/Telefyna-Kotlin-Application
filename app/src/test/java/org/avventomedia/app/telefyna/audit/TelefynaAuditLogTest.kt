@@ -30,4 +30,25 @@ class TelefynaAuditLogTest {
         assertEquals(AuditLog.Event.Category.SYSTEM, AuditLog.Event.NO_INTERNET.getCategory())
         assertEquals(AuditLog.Event.Category.SYSTEM, AuditLog.Event.EMAIL.getCategory())
     }
+
+    @Test
+    fun testPruneOldLogsKeepsRecentAndUnrelatedFiles() {
+        val dir = java.nio.file.Files.createTempDirectory("audit").toFile()
+        try {
+            val today = java.util.Calendar.getInstance().apply { set(2026, java.util.Calendar.OCTOBER, 29) }
+            listOf("2026-10-29.log", "2026-09-29.log", "2026-08-30.log", "2026-08-29.log", "2025-01-01.log",
+                "config.json", "notes.log", "init.txt").forEach { java.io.File(dir, it).writeText("x") }
+
+            val deleted = Logger.pruneOldLogs(dir, 60, today).map { it.name }.sorted()
+
+            assertEquals(listOf("2025-01-01.log", "2026-08-29.log"), deleted)
+            assertEquals(
+                listOf("2026-08-30.log", "2026-09-29.log", "2026-10-29.log", "config.json", "init.txt", "notes.log"),
+                dir.list()!!.sorted()
+            )
+            assertTrue(Logger.pruneOldLogs(dir, 0, today).isEmpty()) // 0 = keep everything
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }
