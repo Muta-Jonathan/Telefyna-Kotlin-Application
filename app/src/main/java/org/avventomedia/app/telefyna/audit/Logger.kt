@@ -137,6 +137,31 @@ class Logger {
             return audits
         }
 
+        /**
+         * Deletes daily audit logs (yyyy-MM-dd.log) dated more than [keepDays] days before [today], so a box running
+         * for months doesn't fill its storage. Files that don't follow the daily naming are left alone.
+         */
+        fun pruneOldLogs(dir: File, keepDays: Int, today: Calendar = Calendar.getInstance()): List<File> {
+            if (keepDays <= 0) return emptyList()
+            val format = SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ENGLISH).apply { isLenient = false }
+            val cutoff = (today.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, -keepDays)
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }.time
+            val deleted = mutableListOf<File>()
+            dir.listFiles { f -> f.isFile && f.name.endsWith(AuditLog.ENDPOINT) }?.forEach { file ->
+                val date = try {
+                    format.parse(file.name.removeSuffix(AuditLog.ENDPOINT))
+                } catch (e: java.text.ParseException) {
+                    null
+                }
+                if (date != null && date.before(cutoff) && file.delete()) {
+                    deleted.add(file)
+                }
+            }
+            return deleted
+        }
+
         fun getOsKillReason(context: Context): String {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {

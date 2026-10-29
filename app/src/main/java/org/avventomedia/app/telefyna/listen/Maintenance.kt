@@ -47,6 +47,15 @@ class Maintenance {
             // Metrics do network calls; keep them off the main thread and out of the scheduling path
             Thread {
                 Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
+                // Old daily logs are pruned off the main thread too
+                Monitor.instance?.let { monitor ->
+                    val keepDays = monitor.configuration?.auditRetentionDays ?: 0
+                    val auditDir = java.io.File(monitor.getAuditFilePath(monitor, ""))
+                    val deleted = Logger.pruneOldLogs(auditDir, keepDays)
+                    if (deleted.isNotEmpty()) {
+                        Logger.log(AuditLog.Event.MAINTENANCE_CLEANUP, deleted.size, keepDays)
+                    }
+                }
             }.start()
         }
     }
