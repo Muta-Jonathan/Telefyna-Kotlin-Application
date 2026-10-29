@@ -1,19 +1,163 @@
 <div align="center">
-  <img src="app/src/main/ic_launcher-playstore.png" alt="Telefyna Logo" width="300" />
+  <img src="app/src/main/ic_launcher-playstore.png" alt="Telefyna Logo" width="240" />
 
   # Telefyna
-  
-  **The ultimate 24/7 online streaming & local file scheduling auto-player for Unattended TV Broadcasting.**
+
+  **24/7 unattended TV playout for Android TV boxes: scheduled local files and live streams, with graphics, fallbacks and self-healing.**
+
+  [![Unit Tests](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/actions/workflows/android-tests.yml/badge.svg)](https://github.com/AvventoMedia/Telefyna-Kotlin-Application/actions/workflows/android-tests.yml)
+  [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+  [![Commercial licence](https://img.shields.io/badge/Commercial-licence_available-green.svg)](LICENSING.md)
 </div>
+
+---
+
+## Contents
+- [Overview](#overview)
+- [Quick start](#quick-start)
+- [Folder layout](#folder-layout)
+- [Configuration](#configuration)
+- [Remote management](#remote-management)
+- [Resilience & monitoring](#resilience--monitoring)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [Changelog](#changelog)
+- [License](#license)
 
 ---
 
 ## Overview
 
-Telefyna is a highly resilient, automated media playout engine built for Digital Signage and TV Broadcasting. It runs completely unattended, scheduling and playing local folders and online streams according to your `config.json`. 
+Telefyna turns an Android TV box into an automated broadcast playout. It plays local folders and online streams (HLS, DASH, RTSP, RTMP, SRT) on a schedule defined in `config.json`, overlays station graphics (logo, live/repeat watermarks, lower thirds, news ticker with clock), and keeps the channel on air without anyone at the box.
 
 > [!IMPORTANT]
-> **Built for 24/7 Resilience:** Telefyna is specifically engineered to survive aggressive Android TV Box hardware. It uses Foreground Services, Keep-Screen-On Wakelocks, and triple-redundant AlarmManager Watchdogs to ensure your broadcast never goes black.
+> **Built for 24/7 operation.** A foreground service, keep-screen-on, and self-rescheduling `AlarmManager` watchdogs keep Telefyna running and bring it back after crashes or OS kills. Every event is written to a daily audit log.
+
+**Highlights**
+- Time-slot scheduling by weekday or date, with a default playlist and an offline/filler fallback
+- Local playlist modes: sequenced, randomized, and four resuming modes that pick up where they left off
+- Intro and outro bumpers (general, special, and per-playlist)
+- Fade-in transitions, logo and watermark graphics (GIF supported), lower thirds, scrolling ticker with clock
+- Automatic fallback to fillers when the internet drops, and back when it returns
+- Email alerts, audit logs, and OS kill-reason forensics (Android 11+)
+
+---
+
+## Quick start
+
+1. **Install** the APK on the Android TV box (`adb install telefyna.apk`).
+2. **Grant permissions.**
+   - On phones and tablets: accept the *All files access* and *Display over other apps* prompts.
+   - On Android TV / Google TV (no settings screens for them):
+     ```bash
+     adb shell appops set org.avventomedia.app.telefyna MANAGE_EXTERNAL_STORAGE allow
+     adb shell appops set org.avventomedia.app.telefyna SYSTEM_ALERT_WINDOW allow
+     ```
+   - *Display over other apps* lets the watchdog bring Telefyna back after a crash; Android 10+ otherwise sometimes blocks the relaunch.
+   - On a box used only for playout you can also make Telefyna the home app, so Android itself keeps it in front: `adb shell pm enable org.avventomedia.app.telefyna/.HomeLauncher`.
+3. **Create your configuration** with the [online configuration tool](https://avventomedia.org/telefynaConfiguration/) and save it as `config.json`.
+4. **Copy content** to a `telefyna` folder at the root of internal storage or the SD card (see [Folder layout](#folder-layout)).
+5. **Launch Telefyna** from the TV home screen (*Your apps*). It loads the config, schedules the day, and starts the current slot.
+
+> [!NOTE]
+> Scheduling follows the device clock. Set the correct date, time and timezone, and enable network time, especially on boxes without a real-time-clock battery.
+
+---
+
+## Folder layout
+
+```text
+telefyna/
+├── config.json              # schedule and settings (from the configuration tool)
+├── logo.png                 # station logo (png | jpg | webp | gif)
+├── playlist/
+│   ├── sermons/             # one folder per playlist (urlOrFolder); subfolders allowed
+│   └── fillers/
+├── bumper/
+│   ├── General-INTRO/       # played before every non-resuming local playlist (if enabled)
+│   ├── General-OUTRO/
+│   ├── <special>-INTRO/     # shared by playlists with specialBumperFolder = <special>
+│   ├── <special>-OUTRO/
+│   ├── <playlist folder>-INTRO/
+│   └── <playlist folder>-OUTRO/
+├── lowerThird/              # lower-third clips referenced by graphics.lowerThirds[].file
+└── watermark/
+    ├── live.png             # "LIVE" logo (displayLiveLogo)
+    └── repeat.png           # "REPEAT" watermark (displayRepeatWatermark)
+```
+
+Audit logs and control files are kept together in **`telefynaAudit/` at the root of storage**, where FTP, Syncthing and file managers can reach them. On Android 11+ this needs *All files access* (see Quick start); without it, Telefyna falls back to `Android/data/org.avventomedia.app.telefyna/files/telefynaAudit/`. Control files dropped in that older location are still honoured.
+
+---
+
+## Configuration
+
+`config.json` is generated by the configuration tool. Its main fields:
+
+| Field | Meaning |
+|---|---|
+| `name`, `version` | Station name and your own config version |
+| `wait` | Seconds between watchdog checks, and how long to wait for internet (default 30) |
+| `auditRetentionDays` | Days of daily audit logs to keep (default 60; `0` keeps everything) |
+| `automationDisabled` | `true` plays only the first playlist, with no schedule |
+| `notificationsDisabled` | Hide the playback notification |
+| `alerts` | Email alerts: `mailer` (SMTP) and `subscribers` (emails, event category, attachments) |
+| `playlists[]` | The playlists; see below |
+| `schedules[]` | Time slots that reuse a playlist (`playlistId`) with their own `start`, `days`, `dates`, `graphics`, … |
+
+**Playlists.** The **first** playlist is the default: it plays whenever nothing else is scheduled. The **second** is the filler/offline fallback: it plays when an online stream fails or a finite playlist finishes early. Keep both active.
+
+| Playlist field | Meaning |
+|---|---|
+| `type` | `ONLINE`, `LOCAL_SEQUENCED`, `LOCAL_RANDOMIZED`, `LOCAL_RESUMING`, `LOCAL_RESUMING_SAME`, `LOCAL_RESUMING_NEXT`, `LOCAL_RESUMING_ONE` |
+| `urlOrFolder` | Stream URL, or folder name(s) under `playlist/` (comma-separated) |
+| `start` | Slot start time, `HH:mm` |
+| `days` / `dates` | Weekdays `1-7` (Sun–Sat) and/or dates `dd-MM-yyyy`; neither = daily |
+| `usingExternalStorage` | Read from USB / SD instead of internal storage |
+| `playingGeneralBumpers`, `specialBumperFolder` | Bumper selection (non-resuming local playlists) |
+| `emptyReplacer` | Index of the playlist to play if this one is empty |
+| `repeat` | For resuming playlists: `DAILY`, `WEEKLY`, `MONTHLY`, `QUARTERLY`, `ANNUALLY` |
+| `graphics` | `displayLogo`, `logoPosition` (`TOP`/`BOTTOM`), `displayLiveLogo`, `displayRepeatWatermark`, `news` (`messages` separated by `~~`, `startMinute`, `showTime`), `lowerThirds[]` (`file`, `starts` in minutes, `replays`) |
+
+**Resuming modes:**
+- `LOCAL_RESUMING` resumes at the exact position.
+- `_SAME` restarts the unfinished programme.
+- `_NEXT` moves on to the next programme.
+- `_ONE` plays a single programme per slot, advancing each time.
+
+---
+
+## Remote management
+
+- **Files:** update `config.json` and media remotely with FTP ([FileZilla](https://filezilla-project.org/)), remote desktop ([RustDesk](https://rustdesk.com/)), or folder sync ([Syncthing](https://syncthing.net/)).
+- **Control files:** create an empty file in `telefynaAudit/`, and Telefyna acts on it within `wait` seconds:
+
+| File | Action |
+|---|---|
+| `init.txt` | Reload the configuration and reschedule now |
+| `restart.txt` | Restart Telefyna |
+| `reboot.txt` | Reboot the device (rooted devices only) |
+| `backupConfig.txt` | Write the current config, with resume positions, to `telefynaAudit/config.json` |
+| `backupConfigReset.txt` | Same, with resume positions reset |
+
+---
+
+## Resilience & monitoring
+
+- **Watchdogs:**
+  - `KeepOnAirReceiver` checks every `wait` seconds and restarts a stuck player. It keeps itself scheduled on every path, and retries the config if nothing is on air.
+  - `PlaylistScheduler` and `MaintenanceReceiver` relaunch Telefyna if the process was killed (with *Display over other apps* granted).
+- **Crashes** are written to the audit log before the restart. If Telefyna can't restart itself, Android's own crash handling takes over and the foreground service brings it back.
+- **Resume points** of resuming playlists are saved every 15 s, so after a power cut or crash they continue close to where they stopped.
+- **Foreground service** keeps the process at high priority.
+- **Survives display changes:** HDMI re-handshakes, TV power cycles and Bluetooth remotes no longer restart playout.
+- **Error recovery:** bad or corrupt items are skipped, live streams rejoin the live edge after `BehindLiveWindow`, and network errors fall back to fillers and retry.
+- **Bad config uploads** are rejected and the last known good configuration keeps airing.
+- **Clock changes:** when the clock jumps (e.g. NTP after boot on RTC-less boxes) or the timezone changes, the day is rescheduled.
+- **Midnight maintenance** reloads the config, logs device metrics, and reschedules the day without interrupting playout.
+- **Audit logs:** one file per day in `telefynaAudit/`, kept for `auditRetentionDays` (default 60, `0` keeps everything). On Android 11+ they also record the OS kill reason (`LOW_MEMORY`, `CRASH`, `ANR`, …) after a restart.
+- **Email alerts** for admin and broadcast events (configure `alerts`). Frequent bookkeeping events (key presses, resume saves) are logged but not emailed. The midnight maintenance mail can attach the config and recent audit logs.
 
 ---
 
@@ -41,10 +185,10 @@ graph TD
 
     Cfg -->|Loads configs| M
     Ply -->|Streams Media| P
-    
+
     M -->|Controls| P
     M -->|Prevents OS Kill| FS
-    
+
     AM -->|Triggers| PS
     AM -->|Triggers| MR
     AM -->|Triggers| KOA
@@ -54,43 +198,54 @@ graph TD
     KOA -->|Auto-Relaunch| M
 ```
 
----
-
-## Installation & Setup
-
-1. **Install:** Download the APK and install it on your Android TV Box.
-2. **Permissions:** Grant the app **Storage** permissions.
-3. **Configuration:** Use the [Online Configuration Tool](https://avventomedia.org/telefynaConfiguration/) to generate your `config.json`.
-4. **Local Storage:** Place your `config.json` and a `playlist/` folder inside a folder named `telefyna` on the root of your device's internal storage or SD Card.
-5. **Reloading:** To force a manual reload of configurations, create a blank file named `init.txt` in the `telefynaAudit` folder.
-
-> [!NOTE]
-> Ensure the device's Date and Timezone are set correctly, as all playlist scheduling is highly time-dependent!
+The target architecture (a schedule engine and player service separated from the UI, plus the cloud platform) is described in [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md).
 
 ---
 
-## Features & Capabilities
+## Development
 
-### Playlists & Fallbacks
-* **Primary Default:** The first playlist is the default filler if nothing else is scheduled.
-* **Secondary Default:** The second playlist acts as an offline fallback if internet streaming (`ONLINE`) fails.
-* **Resuming:** Both defaults must be kept active. If they are local files, it is highly recommended to set them to resuming.
-* **Ad Bumpers:** Play bumpers (ads, promos) before `LOCAL_SEQUENCED` or `LOCAL_RANDOMIZED` playlists. Place them in the `bumper/` folder.
+```bash
+./gradlew testDebugUnitTest   # JVM unit tests (also run by CI on every push and PR to main)
+./gradlew assembleDebug       # debug APK: app/build/outputs/apk/debug/app-debug.apk
+```
 
-### 24/7 Resilience & Auditing
-* **Auto-Recovery:** If the Android OS forcefully kills the app to save memory, one of the three watchdogs (`KeepOnAirReceiver`, `PlaylistScheduler`, or `MaintenanceReceiver`) will instantly revive it.
-* **Audit Logs:** Telefyna continuously writes daily logs to the `telefynaAudit` folder on the root of the device.
-* **Forensic Crash Tracing:** On Android 11+, if the TV Box OS kills the app, Telefyna queries the `ApplicationExitInfo` API upon waking up and logs the *exact hardware reason* (e.g., `LOW_MEMORY`, `CRASH`) directly to the daily log file.
-
-### Remote Management
-* Use FTP clients like [FileZilla](https://filezilla-project.org/) or [RustDesk](https://rustdesk.com/) to upload revised `config.json` files and media remotely.
-* Alternatively, auto-sync folders using [Syncthing](https://syncthing.net/).
+- Requires JDK 17 (Gradle runs on JDK 8–24).
+- One fix or feature per branch, with a pull request to `main`.
+- PRs that change on-screen behaviour include **Before / After** recordings captured on the Android TV emulator.
+- **README to-dos are GitHub issues.** On every push to `main`, [`sync-readme-issues.yml`](.github/workflows/sync-readme-issues.yml) creates an issue for each `- [ ] **Title:** description` line, and ticking it (`- [x]`) closes that issue. Keep titles unchanged, because a renamed title opens a new issue.
 
 ---
 
-## Roadmap / To Do
+## Roadmap
 
-### Industry Standard TV / Digital Signage Features
+### Stability & Broadcast-Quality Fixes (Audit Oct 2026)
+> Full details, file references and fixes: [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md)
+
+- [x] **Midnight Maintenance Race:** Playlist table is now swapped atomically and metrics run off the scheduling path with timeouts (P0-1, #84).
+- [x] **Watchdog Relaunch Blocked on Android 10+:** Relaunch exempted via *Display over other apps* (5/5 relaunches on the emulator vs intermittent aborts before), plus an opt-in HOME/kiosk alias (P0-2, #140).
+- [x] **Activity Recreated on HDMI/Bluetooth Changes:** Full `configChanges` declared, so display and remote changes no longer restart playout (P0-3, #85).
+- [x] **Player Pauses on Audio Focus/Noisy Events:** Audio focus and becoming-noisy handling disabled, `WAKE_MODE_NETWORK` added (P0-4, #86).
+- [x] **Player Left Idle After Errors:** Errors classified by code, bad files skipped with re-`prepare()`, BehindLiveWindow rejoins the live edge (P0-5, #87).
+- [x] **KeepOnAir Stops Rescheduling:** Heartbeat re-armed first on every path, and the config is retried when nothing is on air (P0-6, #88).
+- [ ] **Config Validation & Fallback Slate:** Catch malformed JSON/times, keep last-known-good config, built-in emergency slate, crash-loop safe mode (P0-7). Config validation and last-known-good fallback merged (#89); emergency slate and crash-loop safe mode in #141.
+- [x] **Clock Trust at Boot:** Maintenance re-runs when the clock jumps or the timezone changes, with a warning when the clock looks unset (P0-8, #90).
+- [x] **Main-Thread Network and Disk Blocking:** Reachability probe and audit-log writes moved off the main thread; persistent duration index follows with the gap-fillers work (P0-9, #91).
+- [x] **Date-Only Schedules Play Daily:** Date-only schedules now air only on their dates (P1-1, #125).
+- [x] **SRT Media Source Discarded:** `srt://` routed through `SrtDataSource` with full-payload buffering; verified with a live SRT feed (P1-2, #128).
+- [x] **Cleartext HTTP Streams Blocked:** Cleartext allowed for operator-configured http:// streams (P1-3, #127).
+- [x] **Stale Graphics After Switch:** Pending ticker and lower-third jobs are cancelled on playlist switch (P1-5, #130).
+- [x] **Programs Spanning Midnight Cut Off:** Midnight maintenance lets a running scheduled slot finish; start times compared numerically (P1-6, #131).
+- [ ] **Periodic Resume Position Saving:** Persist resume point every few seconds and by file identity, not index (P1-7). Periodic saving merged (#139); resuming by file identity still open.
+- [ ] **Loudness Normalisation:** EBU R128 / ATSC A/85 level matching between items (P1-8).
+- [x] **Lock Out Remote Media Keys:** Verified not needed: remote media keys don't reach the player (P1-11).
+- [x] **Unexport Internal Receivers:** `PlaylistScheduler` no longer exported (P2-1, #132).
+- [x] **Android TV Launcher Entry:** `LEANBACK_LAUNCHER` category and a 320x180 banner added (P2-2, #133).
+- [x] **Control Files Unreachable on Android 11+:** `telefynaAudit/` (logs and control files) kept at the storage root with All files access; the old `Android/data` location still honoured (P2-3, #134).
+- [x] **Email Alert Storm and BCC Leak:** Per-subscriber drafts (no BCC leak), audit logs actually attached, bodies always set, high-frequency events not emailed (P2-4, P2-5, #135). Digest/category routing left as a product decision.
+- [x] **Audit Log Rotation:** Daily logs older than `auditRetentionDays` (default 60) pruned at maintenance (P3, #136).
+- [ ] **Extract ScheduleEngine and PlayoutService:** Move scheduling into a unit-tested pure-Kotlin engine and the player into a MediaSessionService (P3).
+
+### Industry-Standard TV / Digital Signage Features
 - [ ] **Hardware Watchdog Integration:** Support for hardware-level watchdogs (pinging `/dev/watchdog`) in case the entire Android OS freezes.
 - [ ] **Remote Screen Monitoring:** Capture and stream screenshots/thumbnails to a remote dashboard to verify the TV is actively displaying content.
 - [ ] **Dynamic Content Updates (Push):** Support WebSockets or Firebase Cloud Messaging (FCM) to instantly push playlist changes without waiting for midnight maintenance.
@@ -98,35 +253,8 @@ graph TD
 - [ ] **Fallback Local Caching:** Automatically download and cache a rolling 24-hour window of `ONLINE` stream segments in case the internet goes down completely.
 - [ ] **HDMI CEC Control:** Support turning the physical TV screen on/off via HDMI-CEC commands based on business hours.
 
-### Stability & Broadcast-Quality Fixes (Audit Oct 2026)
-> Full details, file references and fixes: [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md)
-
-- [ ] **Midnight Maintenance Race:** Playlist table is cleared before the schedule reloads and `ipinfo` metrics have no timeout, causing IndexOutOfBounds crashes/restarts around midnight (P0-1).
-- [ ] **Watchdog Relaunch Blocked on Android 10+:** Background activity starts from receivers/alarms are blocked; run as HOME launcher / Device Owner kiosk or grant overlay permission (P0-2).
-- [ ] **Activity Recreated on HDMI/Bluetooth Changes:** Declare full `configChanges` so display or remote changes don't restart playout (P0-3).
-- [ ] **Player Pauses on Audio Focus/Noisy Events:** Disable audio-focus and becoming-noisy handling, add `WAKE_MODE_NETWORK` (P0-4).
-- [ ] **Player Left Idle After Errors:** Re-`prepare()` after skipping items, handle BehindLiveWindow by error code instead of switching to fillers (P0-5).
-- [ ] **KeepOnAir Stops Rescheduling:** Always reschedule the heartbeat (reboot path, internet-restore path, null playlist) (P0-6).
-- [ ] **Config Validation & Fallback Slate:** Catch malformed JSON/times, keep last-known-good config, built-in emergency slate, crash-loop safe mode (P0-7).
-- [ ] **Clock Trust at Boot:** Re-run maintenance on TIME_SET/TIMEZONE_CHANGED and wait for a valid clock on RTC-less boxes (P0-8).
-- [ ] **Main-Thread Network and Disk Blocking:** Move internet checks, duration probing and log writes off the main thread (P0-9).
-- [ ] **Date-Only Schedules Play Daily:** `Playlist.scheduledToday()` ignores `dates` when `days` is empty (P1-1).
-- [ ] **SRT Media Source Discarded:** SRT/RTMP sources are built then thrown away; route by URI scheme in a custom MediaSource factory (P1-2).
-- [ ] **Cleartext HTTP Streams Blocked:** Allow cleartext in the network security config for http:// HLS/IPTV (P1-3).
-- [ ] **Stale Graphics After Switch:** Cancel pending ticker/lower-third jobs when the playlist changes (P1-5).
-- [ ] **Programs Spanning Midnight Cut Off:** Carry yesterday's active slot across the 00:00 boundary (P1-6).
-- [ ] **Periodic Resume Position Saving:** Persist resume point every few seconds and by file identity, not index (P1-7).
-- [ ] **Loudness Normalisation:** EBU R128 / ATSC A/85 level matching between items (P1-8).
-- [ ] **Lock Out Remote Media Keys:** Prevent remote play/pause/next from altering the broadcast (P1-11).
-- [ ] **Unexport Internal Receivers:** `PlaylistScheduler` is exported without permission, any app can switch the channel (P2-1).
-- [ ] **Android TV Launcher Entry:** Add `LEANBACK_LAUNCHER` category and a 320x180 banner (P2-2).
-- [ ] **Control Files Unreachable on Android 11+:** Move `init.txt`/`restart.txt`/`reboot.txt` out of `Android/data` (P2-3).
-- [ ] **Email Alert Storm and BCC Leak:** Digest alerts, per-subscriber drafts, honour `eventCategory`, fix audit attachments (P2-4, P2-5).
-- [ ] **Audit Log Rotation:** Prune/rotate daily logs so long-running boxes don't fill storage (P3).
-- [ ] **Extract ScheduleEngine and PlayoutService:** Move scheduling into a unit-tested pure-Kotlin engine and the player into a MediaSessionService (P3).
-
 ### Commercial Platform (Future)
-Telefyna is planned to become a generic, white-label playout product sold on subscription. The device-side work below comes first; the cloud dashboard and billing will be a separate project.
+Telefyna is planned to become a generic, white-label playout product sold on subscription, under the commercial side of the [dual licence](LICENSING.md). The device-side work below comes first; the cloud dashboard and billing will be a separate project.
 
 - [ ] **White-Label / De-branding:** Remove hard-coded station and organisation references; branding, slate and notification text come from config.
 - [ ] **Device Registration & Pairing:** Stable device ID with an on-screen pairing code claimed from the dashboard.
@@ -138,7 +266,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [ ] **Plan-Based Feature Gating:** Limit devices/channels, online streams, graphics and remote management by plan.
 - [ ] **OTA App Updates:** Staged remote rollout of new Telefyna versions across the fleet.
 
-### Existing Backlog
+### Backlog
 - [ ] Auto-installation of config under resources if non-existent at first run.
 - [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
 - [ ] Enhance resuming playlists (`LOCAL_RESUMING*`) to track the actual filename (`mediaId`) instead of just the index, preventing playlist resets or skipped episodes when files are added or removed from the folder.
@@ -148,9 +276,9 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [ ] Log every keypress.
 - [ ] Fix Swift bug: don't override, just replace manually.
 - [ ] Investigate bumpers missing when loaded from scheduler.
-- [ ] Handle player idling on stream; resume play/seekTo. *(see P0-5 in the audit)*
+- [ ] Handle player idling on stream; resume play/seekTo.
 - [ ] Add support for automatic drive syncing.
-- [ ] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30.
+- [ ] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30. Likely addressed by #85 and #86; verify on a box before closing.
 - [ ] Support YouTube links and streams.
 - [ ] Build reports from audits.
 - [ ] Read satellite channels and decoders as local playlists and streams.
@@ -158,26 +286,40 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 
 ---
 
-## Solved Issues & Completed Updates
+## Changelog
 
-### 2026 - August
+<details>
+<summary><b>2026 - October</b>: industry-readiness audit and stability fixes</summary>
+
+- Industry-readiness audit published ([docs/industry-readiness-audit.md](docs/industry-readiness-audit.md), #83).
+- Midnight maintenance race fixed (#84). Playout survives HDMI, display and Bluetooth changes (#85). No more pausing on audio focus or noisy events (#86). Player recovers after errors (#87). Watchdog always re-armed (#88).
+- Bad config uploads fall back to the last known good config (#89). Reschedule on clock/timezone changes (#90). Network probing and log writes off the main thread (#91). Date-only schedules fixed (#125). Plain http:// streams allowed (#127). SRT streams actually play (#128). No more seeking live streams on every rebuffer (#129). Stale graphics cancelled on switch (#130). Programmes no longer cut at midnight (#131). Other apps can no longer switch the channel (#132). Telefyna appears in the Android TV launcher (#133).
+- Logs and control files back at the storage root (#134). Email alerts fixed (#135). Old audit logs pruned (#136). Issue-sync verifies TLS and pages through all issues (#137). Crash handler hands over to Android when it can't restart (#138). Resume points saved every 15 s (#139). Watchdog relaunch exempted from Android's background-start limits (#140).
+</details>
+
+<details>
+<summary><b>2026 - August</b></summary>
+
 - [x] **[SOLVED] Corrupted File Infinite Crash Loop:** Fixed a critical bug where decoder crashes on malformed local files (e.g. Invalid NAL length) would cause the playlist to aggressively loop and restart the same corrupted file indefinitely. The player now gracefully skips corrupted files, or safely switches to fillers if the folder is completely exhausted.
 - [x] **[SOLVED] Random Playlist Repetition:** Upgraded the random seed generation in `LOCAL_RANDOMIZED` from a predictable `System.nanoTime()` clock to the highly unpredictable `Random.Default`, permanently fixing the issue where shuffled playlists repeated identical daily sequences.
 - [x] **[SOLVED] Finite Resuming Playlist Loops:** Fixed a bug where finite resuming playlists (like `LOCAL_RESUMING_ONE`) were not fully tracked as finite. They now correctly log `PLAYLIST_EXHAUSTED` and switch to fallback fillers when their content finishes earlier than the scheduled time slot.
 - [x] **[SOLVED] Automated Testing & CI/CD:** Integrated a comprehensive JVM unit testing suite (MockK, JUnit) for core business logic (Scheduling, AuditLogs, Configs) and deployed automated GitHub Actions to verify tests on every Push and PR to `main`.
+</details>
 
-### 2026 - August
-- [x] **[SOLVED] Automated Testing & CI/CD:** Integrated a comprehensive JVM unit testing suite (MockK, JUnit) for core business logic (Scheduling, AuditLogs, Configs) and deployed automated GitHub Actions to verify tests on every Push and PR to `main`.
+<details>
+<summary><b>2026 - July</b></summary>
 
-### 2026 - July
 - [x] **[SOLVED] SRT Stream Support:** Integrated custom `SrtDataSource` & `SrtDataSourceFactory` powered by `srtdroid-core` ([ExoPlayer Issue #8647](https://github.com/google/ExoPlayer/issues/8647)) to support `srt://` protocol playback *(pending end-to-end field testing)*.
 - [x] **[SOLVED] 24/7 Resilience Update:** Prevented aggressive Android OS memory kills by converting `Monitor` to use `FLAG_KEEP_SCREEN_ON` and attaching a persistent `TelefynaForegroundService`.
 - [x] **[SOLVED] Auto-Recovery Watchdogs:** Rewrote `KeepOnAirReceiver`, `MaintenanceReceiver`, and `PlaylistScheduler` as manifest-registered broadcast receivers to wake the app from total process death.
 - [x] **[SOLVED] Single Instance UI:** Fixed app relaunching opening a new/duplicate instance rather than resuming. Handled using `FLAG_ACTIVITY_SINGLE_TOP` in recovery intents.
 - [x] **[SOLVED] Forensic Audit Logging:** Added stop/kill audit events. Integrated Android 11 `ApplicationExitInfo` into `Logger.kt` to write exact hardware/OS kill reasons directly to the `telefynaAudit` daily text logs.
 - [x] **[SOLVED] Midnight Runner Fix:** Tested and fixed the midnight runner by decoupling it from the fragile `Activity` context and moving it to a hardened `BroadcastReceiver`.
+</details>
 
-### 2025 - January
+<details>
+<summary><b>2025</b></summary>
+
 - [x] **[SOLVED]** Rename "clone" with "schedule".
 - [x] **[SOLVED]** Add "promos/sweepers/something" folder that starts the playout.
 - [x] **[SOLVED]** Network listener: switches to second default when internet is off, and back if slot is still active.
@@ -191,11 +333,18 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [x] **[SOLVED]** Overlay another layer on the video stream for ads, logos, gifs, etc.
 - [x] **[SOLVED]** Add smooth and fade transitions between programs switches.
 - [x] **[SOLVED]** Add Custom scroll ticker with time.
-
-### 2025 - March
 - [x] **[SOLVED]** Support gifs in showing logo and watermarks.
+</details>
 
 ---
 
-**Author:** AvventoProductions  
-**Support:** apps@avventomedia.org
+## License
+
+Telefyna is **dual-licensed**:
+
+- **[GNU AGPL-3.0](LICENSE)**: free and open source. If you modify Telefyna and run it for others over a network, you must publish your changes under the same licence.
+- **Commercial licence**: for closed-source modifications, OEM/white-label bundling, hosted services without publishing source, and the upcoming subscription platform. Contact **apps@avventomedia.org**.
+
+See [LICENSING.md](LICENSING.md) for details, contributor terms, and the licences of the third-party libraries Telefyna uses.
+
+Copyright © 2024–2026 Avvento Media · **Author:** AvventoProductions · **Support:** apps@avventomedia.org
