@@ -59,6 +59,7 @@ import org.avventomedia.app.telefyna.audit.Logger
 import org.avventomedia.app.telefyna.listen.Maintenance
 import org.avventomedia.app.telefyna.listen.TelefynaUnCaughtExceptionHandler
 import org.avventomedia.app.telefyna.modal.Config
+import org.avventomedia.app.telefyna.modal.ConfigValidator
 import org.avventomedia.app.telefyna.modal.Graphics
 import org.avventomedia.app.telefyna.modal.LowerThird
 import org.avventomedia.app.telefyna.modal.News
@@ -491,6 +492,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun getLastGoodConfigFile(): File = File(filesDir, "last-good-config.json")
 
     fun initialise() {
+        installDefaultConfigIfMissing()
         val config = readConfig(File(getConfigFile()))
         if (config != null) {
             configuration = config
@@ -515,6 +517,23 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
+    /**
+     * First run only: install the bundled default config and folder layout when there is no config.json.
+     * Skipped once any config has ever loaded (a last-good copy exists), so a missing operator config keeps
+     * airing its last good version instead of being replaced by the blank default.
+     */
+    private fun installDefaultConfigIfMissing() {
+        if (getLastGoodConfigFile().exists()) return
+        try {
+            val root = File(getProgramsFolderPath(false))
+            if (DefaultConfigInstaller.installIfMissing(root) { assets.open(DefaultConfigInstaller.ASSET) }) {
+                Logger.log(AuditLog.Event.CONFIG_INSTALLED, root.absolutePath)
+            }
+        } catch (e: IOException) {
+            Logger.log(AuditLog.Event.ERROR, "Could not install the default configuration: ${e.message}")
+        }
+    }
+
     private fun readConfig(file: File): Config? {
         if (!file.exists()) {
             Logger.log(AuditLog.Event.ERROR, "Configuration not found: ${file.absolutePath}")
@@ -535,15 +554,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
-    private fun validateConfig(config: Config?): String? {
-        val playlists = config?.playlists ?: return "no playlists"
-        if (playlists.size <= getSecondDefaultIndex()) {
-            return "at least 2 playlists are required (first default and fillers)"
-        }
-        val badStart = (playlists.mapNotNull { it.start } + config.schedules.orEmpty().mapNotNull { it.start })
-            .firstOrNull { it.isNotBlank() && Playlist(start = it).parseStart() == null }
-        return badStart?.let { "start time '$it' is not HH:mm" }
-    }
+    private fun validateConfig(config: Config?): String? = ConfigValidator.problem(config)
 
     private fun cacheNowPlaying(noProgramTransition: Boolean, log: Boolean = true) {
         val now = nowPlayingIndex?.let { getPlaylistIndex(it) }

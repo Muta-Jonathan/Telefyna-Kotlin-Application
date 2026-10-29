@@ -1,0 +1,29 @@
+{
+  "version": "1",
+  "name": "Telefyna",
+  "automationDisabled": false,
+  "notificationsDisabled": true,
+  "wait": 30,
+  "auditRetentionDays": 60,
+  "loudnessLeveling": false,
+  "playlists": [
+    {
+      "id": "default",
+      "name": "Default",
+      "description": "Plays whenever nothing else is scheduled. Add videos to telefyna/playlist/default",
+      "type": "LOCAL_SEQUENCED",
+      "urlOrFolder": "default",
+      "active": true,
+      "graphics": { "displayLogo": true, "logoPosition": "TOP" }
+    },
+    {
+      "id": "fillers",
+      "name": "Fillers",
+      "description": "Plays when a stream fails or a programme ends early. Add videos to telefyna/playlist/fillers",
+      "type": "LOCAL_RANDOMIZED",
+      "urlOrFolder": "fillers",
+      "active": true
+    }
+  ],
+  "schedules": []
+}
