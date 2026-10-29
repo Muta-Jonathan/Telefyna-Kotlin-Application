@@ -149,6 +149,8 @@ Audit logs and control files are kept in `telefynaAudit/`:
 - **Foreground service** keeps the process at high priority.
 - **Survives display changes:** HDMI re-handshakes, TV power cycles and Bluetooth remotes no longer restart playout.
 - **Error recovery:** bad or corrupt items are skipped, live streams rejoin the live edge after `BehindLiveWindow`, and network errors fall back to fillers and retry.
+- **Bad config uploads** are rejected and the last known good configuration keeps airing.
+- **Clock changes:** when the clock jumps (e.g. NTP after boot on RTC-less boxes) or the timezone changes, the day is rescheduled.
 - **Midnight maintenance** reloads the config, logs device metrics, and reschedules the day without interrupting playout.
 - **Audit logs:** one file per day in `telefynaAudit/`. On Android 11+ they also record the OS kill reason (`LOW_MEMORY`, `CRASH`, `ANR`, …) after a restart.
 - **Email alerts** for admin and broadcast events (configure `alerts`).
@@ -221,19 +223,19 @@ The target architecture (a schedule engine and player service separated from the
 - [x] **Player Pauses on Audio Focus/Noisy Events:** Audio focus and becoming-noisy handling disabled, `WAKE_MODE_NETWORK` added (P0-4, #86).
 - [x] **Player Left Idle After Errors:** Errors classified by code, bad files skipped with re-`prepare()`, BehindLiveWindow rejoins the live edge (P0-5, #87).
 - [x] **KeepOnAir Stops Rescheduling:** Heartbeat re-armed first on every path, and the config is retried when nothing is on air (P0-6, #88).
-- [ ] **Config Validation & Fallback Slate:** Catch malformed JSON/times, keep last-known-good config, built-in emergency slate, crash-loop safe mode (P0-7).
-- [ ] **Clock Trust at Boot:** Re-run maintenance on TIME_SET/TIMEZONE_CHANGED and wait for a valid clock on RTC-less boxes (P0-8).
-- [ ] **Main-Thread Network and Disk Blocking:** Move internet checks, duration probing and log writes off the main thread (P0-9).
-- [ ] **Date-Only Schedules Play Daily:** `Playlist.scheduledToday()` ignores `dates` when `days` is empty (P1-1).
-- [ ] **SRT Media Source Discarded:** SRT/RTMP sources are built then thrown away; route by URI scheme in a custom MediaSource factory (P1-2).
-- [ ] **Cleartext HTTP Streams Blocked:** Allow cleartext in the network security config for http:// HLS/IPTV (P1-3).
-- [ ] **Stale Graphics After Switch:** Cancel pending ticker/lower-third jobs when the playlist changes (P1-5).
-- [ ] **Programs Spanning Midnight Cut Off:** Carry yesterday's active slot across the 00:00 boundary (P1-6).
+- [ ] **Config Validation & Fallback Slate:** Catch malformed JSON/times, keep last-known-good config, built-in emergency slate, crash-loop safe mode (P0-7). Config validation and last-known-good fallback merged (#89); emergency slate and crash-loop safe mode in #141.
+- [x] **Clock Trust at Boot:** Maintenance re-runs when the clock jumps or the timezone changes, with a warning when the clock looks unset (P0-8, #90).
+- [x] **Main-Thread Network and Disk Blocking:** Reachability probe and audit-log writes moved off the main thread; persistent duration index follows with the gap-fillers work (P0-9, #91).
+- [x] **Date-Only Schedules Play Daily:** Date-only schedules now air only on their dates (P1-1, #125).
+- [x] **SRT Media Source Discarded:** `srt://` routed through `SrtDataSource` with full-payload buffering; verified with a live SRT feed (P1-2, #128).
+- [x] **Cleartext HTTP Streams Blocked:** Cleartext allowed for operator-configured http:// streams (P1-3, #127).
+- [x] **Stale Graphics After Switch:** Pending ticker and lower-third jobs are cancelled on playlist switch (P1-5, #130).
+- [x] **Programs Spanning Midnight Cut Off:** Midnight maintenance lets a running scheduled slot finish; start times compared numerically (P1-6, #131).
 - [ ] **Periodic Resume Position Saving:** Persist resume point every few seconds and by file identity, not index (P1-7).
 - [ ] **Loudness Normalisation:** EBU R128 / ATSC A/85 level matching between items (P1-8).
 - [x] **Lock Out Remote Media Keys:** Verified not needed: remote media keys don't reach the player (P1-11).
-- [ ] **Unexport Internal Receivers:** `PlaylistScheduler` is exported without permission, any app can switch the channel (P2-1).
-- [ ] **Android TV Launcher Entry:** Add `LEANBACK_LAUNCHER` category and a 320x180 banner (P2-2).
+- [x] **Unexport Internal Receivers:** `PlaylistScheduler` no longer exported (P2-1, #132).
+- [x] **Android TV Launcher Entry:** `LEANBACK_LAUNCHER` category and a 320x180 banner added (P2-2, #133).
 - [ ] **Control Files Unreachable on Android 11+:** Move `init.txt`/`restart.txt`/`reboot.txt` out of `Android/data` (P2-3).
 - [ ] **Email Alert Storm and BCC Leak:** Digest alerts, per-subscriber drafts, honour `eventCategory`, fix audit attachments (P2-4, P2-5).
 - [ ] **Audit Log Rotation:** Prune/rotate daily logs so long-running boxes don't fill storage (P3).
@@ -283,10 +285,11 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 ## Changelog
 
 <details>
-<summary><b>2026 - October</b>: industry-readiness audit and first stability fixes</summary>
+<summary><b>2026 - October</b>: industry-readiness audit and stability fixes</summary>
 
 - Industry-readiness audit published ([docs/industry-readiness-audit.md](docs/industry-readiness-audit.md), #83).
 - Midnight maintenance race fixed (#84). Playout survives HDMI, display and Bluetooth changes (#85). No more pausing on audio focus or noisy events (#86). Player recovers after errors (#87). Watchdog always re-armed (#88).
+- Bad config uploads fall back to the last known good config (#89). Reschedule on clock/timezone changes (#90). Network probing and log writes off the main thread (#91). Date-only schedules fixed (#125). Plain http:// streams allowed (#127). SRT streams actually play (#128). No more seeking live streams on every rebuffer (#129). Stale graphics cancelled on switch (#130). Programmes no longer cut at midnight (#131). Other apps can no longer switch the channel (#132). Telefyna appears in the Android TV launcher (#133).
 </details>
 
 <details>
