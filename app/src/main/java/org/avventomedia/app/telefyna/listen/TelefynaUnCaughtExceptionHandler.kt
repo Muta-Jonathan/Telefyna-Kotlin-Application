@@ -39,6 +39,7 @@ class TelefynaUnCaughtExceptionHandler : Thread.UncaughtExceptionHandler {
         }
 
         context?.let { Monitor.recordCrash(it) } // feeds crash-loop safe mode on the next start
+        Logger.flush()
         context?.restartApp()
     }
 
