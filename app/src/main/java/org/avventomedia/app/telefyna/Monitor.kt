@@ -1611,6 +1611,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         alarmManager?.set(AlarmManager.RTC, System.currentTimeMillis() + 100, mPendingIntent)
         Logger.log(AuditLog.Event.RESTARTING)
+        Logger.flush()
         instance?.finish()
         exitProcess(2)
     }
