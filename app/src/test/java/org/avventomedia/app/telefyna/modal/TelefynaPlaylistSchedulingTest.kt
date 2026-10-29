@@ -115,4 +115,16 @@ class TelefynaPlaylistSchedulingTest {
         assertEquals(5, midnightCal[Calendar.SECOND]) // The 5-second maintenance offset
         assertEquals(0, midnightCal[Calendar.MILLISECOND])
     }
+
+    @Test
+    fun testDateOnlyScheduleOnlyRunsOnThoseDates() {
+        val fmt = SimpleDateFormat("dd-MM-yyyy")
+        val today = fmt.format(Calendar.getInstance().time)
+        val tomorrow = fmt.format(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }.time)
+
+        assertTrue(Playlist(start = "10:00", dates = arrayOf(today)).scheduledToday())
+        assertFalse(Playlist(start = "10:00", dates = arrayOf(tomorrow)).scheduledToday())
+        assertFalse(Playlist(start = "10:00", days = emptyArray(), dates = arrayOf(tomorrow)).scheduledToday())
+        assertTrue(Playlist(start = "10:00").scheduledToday()) // no restriction = daily
+    }
 }
