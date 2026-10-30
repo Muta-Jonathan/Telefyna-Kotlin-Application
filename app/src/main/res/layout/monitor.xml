@@ -19,8 +19,6 @@
         app:show_timeout="0"
         app:hide_on_touch="false"
         app:surface_type="texture_view"
-        android:animateLayoutChanges="true"
-        app:keep_content_on_player_reset="true"
         app:resize_mode="fill"/>
 
     <!-- Emergency slate: covers the screen whenever nothing can be played, so viewers never see a black screen -->

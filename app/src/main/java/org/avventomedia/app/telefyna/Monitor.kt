@@ -174,6 +174,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var programItems: MutableList<MediaItem> = mutableListOf()
     // Next playlist queued behind the last item for a gapless handover
     private var upcomingProgramItems: MutableList<MediaItem>? = null
+    // When the current switch started loading, to log how long the new picture takes (0 = nothing pending)
+    private var switchStartedAt = 0L
     private lateinit var tickerRecyclerView: RecyclerView
     private lateinit var tickerAdapter: TickerAdapter
     private var lowerThirdView: VideoView? = null
@@ -758,11 +760,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
                 emptyHops = 0
 
+                // No stop()/clearMediaItems() on a switch: stopping releases the video decoder, and re-creating it on a
+                // TV box froze the last frame for seconds. The old programme keeps playing until the new items replace it.
                 if (player == null) {
                     player = buildPlayer(context)
-                } else {
-                    player!!.stop()
-                    player!!.clearMediaItems()
                 }
 
                         // Reset tracking now playing if the playlist programs were modified
@@ -937,9 +938,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         programItems = programItems.map { it.buildUpon().setTag(index).build() }.toMutableList()
                         upcomingProgramItems = null
                         // Load the new media items
-                        programItems.let { player!!.setMediaItems(it) }
-                        nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
-                        player!!.prepare()
+                        switchStartedAt = android.os.SystemClock.elapsedRealtime()
+                        player!!.setMediaItems(programItems, nowProgramItem ?: 0, nowPosition)
+                        if (player!!.playbackState == Player.STATE_IDLE) {
+                            player!!.prepare() // first start, or after an error; otherwise the player moves on by itself
+                        }
                         // Fade-in for new player (if desired, otherwise skip)
                         if (!currentPlaylist!!.isResuming()) {
                             player!!.volume = 0f
@@ -978,6 +981,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             nowPlayingIndex = index
             currentPlaylist = playlist
             triggerGraphics(player?.currentPosition ?: 0L)
+        }
+    }
+
+    override fun onRenderedFirstFrame() {
+        if (switchStartedAt > 0) {
+            val ms = android.os.SystemClock.elapsedRealtime() - switchStartedAt
+            switchStartedAt = 0
+            Logger.log(AuditLog.Event.FIRST_FRAME, ms, getNowPlayingPlaylistLabel())
         }
     }
 

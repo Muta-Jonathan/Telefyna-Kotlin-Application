@@ -180,7 +180,9 @@ object PdfReportWriter {
             "Crash-loop safe mode entries" to report.safeModeEntries.toString(),
             "Stuck player recoveries" to report.stuckRecoveries.toString(),
             "Watchdog relaunches" to report.watchdogRelaunches.toString(),
-            "Internet outages" to outage
+            "Internet outages" to outage,
+            "Switch time (to first picture)" to if (report.switchesMeasured == 0) "not measured" else
+                "average ${report.averageSwitchMs} ms, slowest ${report.slowestSwitchMs} ms (${report.switchesMeasured} switches)"
         ).forEach { (k, v) -> row(listOf(k, v), listOf(230f, contentWidth - 230f)) }
 
         if (report.scheduleClashes.isNotEmpty()) {

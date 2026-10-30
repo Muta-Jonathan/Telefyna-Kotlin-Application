@@ -134,7 +134,11 @@ data class ReportData(
     val internetOutages: Int,
     val internetOutageMs: Long,
     val scheduleClashes: Map<String, Int>,
-    val topErrors: List<ErrorStat>
+    val topErrors: List<ErrorStat>,
+    // time from a playlist switch to its first picture (FIRST_FRAME)
+    val switchesMeasured: Int = 0,
+    val averageSwitchMs: Long = 0,
+    val slowestSwitchMs: Long = 0
 ) {
     val programmeMs: Long get() = airtimeByPlaylist.filterKeys { it !in fillersPlaylists }.values.sum()
     val fillersMs: Long get() = airtimeByPlaylist.filterKeys { it in fillersPlaylists }.values.sum()
@@ -212,6 +216,8 @@ object AuditReport {
         var outages = 0; var outageMs = 0L; var outageStart: Long? = null
         val clashes = linkedMapOf<String, Int>()
         val errors = linkedMapOf<String, Int>()
+        val switchTimes = mutableListOf<Long>()
+        val firstFrame = Regex("""First picture (\d+) ms""")
 
         fun moveTo(t: Long, next: State) {
             val silenceCap = minOf(t, cursor + MAX_SILENCE_MS)
@@ -247,6 +253,7 @@ object AuditReport {
                 "STUCK" -> stuck++
                 "NO_INTERNET" -> if (outageStart == null && e.message.contains("no internet")) { outages++; outageStart = e.time }
                 "INTERNET_RESTORED" -> outageStart?.let { outageMs += e.time - it; outageStart = null }
+                "FIRST_FRAME" -> firstFrame.find(e.message)?.let { switchTimes += it.groupValues[1].toLong() }
                 "SCHEDULE_CLASH" -> clashes.merge(e.message.lineSequence().first(), 1, Int::plus)
                 "ERROR" -> {
                     val first = e.message.lineSequence().first().trim()
@@ -278,7 +285,10 @@ object AuditReport {
             internetOutages = outages,
             internetOutageMs = outageMs,
             scheduleClashes = clashes,
-            topErrors = errors.map { ErrorStat(it.key, it.value) }.sortedByDescending { it.count }.take(8)
+            topErrors = errors.map { ErrorStat(it.key, it.value) }.sortedByDescending { it.count }.take(8),
+            switchesMeasured = switchTimes.size,
+            averageSwitchMs = if (switchTimes.isEmpty()) 0 else switchTimes.sum() / switchTimes.size,
+            slowestSwitchMs = switchTimes.maxOrNull() ?: 0
         )
     }
 
@@ -320,7 +330,12 @@ object AuditReport {
             internetOutages = months.sumOf { it.internetOutages },
             internetOutageMs = months.sumOf { it.internetOutageMs },
             scheduleClashes = clashes,
-            topErrors = errors.map { ErrorStat(it.key, it.value) }.sortedByDescending { it.count }.take(8)
+            topErrors = errors.map { ErrorStat(it.key, it.value) }.sortedByDescending { it.count }.take(8),
+            switchesMeasured = months.sumOf { it.switchesMeasured },
+            averageSwitchMs = months.sumOf { it.averageSwitchMs * it.switchesMeasured }.let { total ->
+                val n = months.sumOf { it.switchesMeasured }; if (n == 0) 0 else total / n
+            },
+            slowestSwitchMs = months.maxOfOrNull { it.slowestSwitchMs } ?: 0
         )
     }
 
