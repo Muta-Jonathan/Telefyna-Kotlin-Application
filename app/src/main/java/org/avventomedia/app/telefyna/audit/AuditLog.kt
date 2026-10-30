@@ -66,6 +66,8 @@ class AuditLog {
         DISPLAY_REPEAT_PROGRAM_WATERMARK_ON("Turning ON Repeat Program Watermark"),
         FADE_PLAYED("Fade played, %s"),
         // not emailed (system category): logged on every switch
+        // not emailed (system category)
+        SLOT_PREROLL("Preparing slot: %s, starting in %d ms"),
         FIRST_FRAME("First picture %d ms after switching to playlist: %s"),
 
 

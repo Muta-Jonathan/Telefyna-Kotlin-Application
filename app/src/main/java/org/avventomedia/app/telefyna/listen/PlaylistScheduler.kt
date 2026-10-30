@@ -14,6 +14,8 @@ import org.avventomedia.app.telefyna.audit.Logger
 class PlaylistScheduler : BroadcastReceiver() {
     companion object {
         const val PLAYLIST_INDEX = "playlist_index"
+        // exact slot start (epoch ms); the alarm fires Maintenance.PREROLL_MS before it
+        const val START_AT = "start_at"
     }
 
     @OptIn(UnstableApi::class)
@@ -22,9 +24,9 @@ class PlaylistScheduler : BroadcastReceiver() {
         try {
             val monitor = Monitor.instance
             if (monitor != null) {
-                monitor.switchNow(
+                monitor.prepareSlot(
                     intent.getIntExtra(PLAYLIST_INDEX, monitor.getFirstDefaultIndex()),
-                    false, monitor
+                    intent.getLongExtra(START_AT, 0L)
                 )
             } else {
                 // Process was killed by OS — relaunch Monitor Activity
