@@ -1,8 +1,10 @@
 package org.avventomedia.app.telefyna.audit
 
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import java.io.File
@@ -60,9 +62,23 @@ object PdfReportWriter {
         return "$t…"
     }
 
-    fun write(report: ReportData, station: String, out: File, toDate: Boolean) {
+    /** The station's on-air logo, top-right of the header band, scaled to fit (first frame of a GIF). */
+    private fun drawLogo(canvas: Canvas, logo: File?) {
+        val bitmap = logo?.takeIf { it.isFile }?.let { runCatching { BitmapFactory.decodeFile(it.absolutePath) }.getOrNull() } ?: return
+        val maxW = 130f; val maxH = 70f
+        val scale = minOf(maxW / bitmap.width, maxH / bitmap.height)
+        val w = bitmap.width * scale; val h = bitmap.height * scale
+        val left = WIDTH - MARGIN - w; val top = (92f - h) / 2
+        canvas.drawBitmap(bitmap, null, RectF(left, top, left + w, top + h), Paint(Paint.FILTER_BITMAP_FLAG))
+        bitmap.recycle()
+    }
+
+    fun write(report: ReportData, branding: ReportBranding, out: File, toDate: Boolean) {
+        val station = branding.station
         val doc = PdfDocument()
-        val w = Writer(doc, "Telefyna · $station · ${report.period.title}")
+        val version = listOfNotNull(branding.appVersion?.let { "Telefyna $it" } ?: "Telefyna", branding.configVersion?.let { "config $it" })
+            .joinToString(" · ")
+        val w = Writer(doc, "$version · $station · ${report.period.title}")
         val day = SimpleDateFormat("EEE d MMM yyyy", Locale.ENGLISH)
         val stamp = SimpleDateFormat("d MMM yyyy HH:mm", Locale.ENGLISH)
         val contentWidth = WIDTH - 2 * MARGIN
@@ -70,11 +86,12 @@ object PdfReportWriter {
 
         // Header band
         w.canvas.drawRect(0f, 0f, WIDTH.toFloat(), 92f, fill(ACCENT))
+        drawLogo(w.canvas, branding.logo)
         w.canvas.drawText(station, MARGIN, 34f, paint(20f, Color.WHITE, bold = true))
         w.canvas.drawText("${report.period.kind.label} broadcast report — ${report.period.title}${if (toDate) " (to date)" else ""}",
             MARGIN, 56f, paint(12f, Color.WHITE))
         val lastDay = Date(minOf(report.period.end, report.coveredTo) - 1)
-        w.canvas.drawText("${day.format(Date(report.period.start))} – ${day.format(lastDay)} · generated ${stamp.format(Date())}",
+        w.canvas.drawText("${day.format(Date(report.period.start))} – ${day.format(lastDay)} · generated ${stamp.format(Date())} · $version",
             MARGIN, 76f, paint(9f, Color.WHITE))
         w.y = 118f
 

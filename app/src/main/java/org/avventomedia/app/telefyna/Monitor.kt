@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import org.apache.commons.lang3.StringUtils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
+import org.avventomedia.app.telefyna.audit.ReportBranding
 import org.avventomedia.app.telefyna.audit.ReportGenerator
 import org.avventomedia.app.telefyna.audit.ReportPeriod
 import org.avventomedia.app.telefyna.listen.Maintenance
@@ -492,7 +493,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             val auditDir = File(getAuditFilePath(this, ""))
             Logger.flush() // today's lines must be on disk before they are read back
             val station = configuration?.name ?: getString(R.string.app_name)
-            ReportGenerator.generate(auditDir, station, periods, toDate).forEach { file ->
+            val logo = possibleExtensions.map { File("${getProgramsFolderPath(false)}${File.separator}logo.$it") }.firstOrNull { it.exists() }
+            val appVersion = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
+            val branding = ReportBranding(station, logo, appVersion, configuration?.version?.takeIf { it.isNotBlank() })
+            ReportGenerator.generate(auditDir, station, periods, toDate, branding = branding).forEach { file ->
                 Logger.log(AuditLog.Event.REPORT_GENERATED, file.nameWithoutExtension, file.absolutePath)
             }
         } catch (e: Exception) {

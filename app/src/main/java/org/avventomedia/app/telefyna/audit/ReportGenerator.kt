@@ -2,6 +2,14 @@ package org.avventomedia.app.telefyna.audit
 
 import java.io.File
 
+/** What identifies a report: station name, its on-air logo, the Telefyna build and the config version in force. */
+data class ReportBranding(
+    val station: String,
+    val logo: File? = null,
+    val appVersion: String? = null,
+    val configVersion: String? = null
+)
+
 /**
  * Builds broadcast reports from the daily audit logs and files them as
  * reports/<year>/weekly|monthly/<Station>_<kind>_<period>[_to-date].pdf (yearly reports sit directly in <year>/).
@@ -36,7 +44,8 @@ object ReportGenerator {
         periods: List<ReportPeriod>,
         toDate: Boolean,
         now: Long = System.currentTimeMillis(),
-        render: (ReportData, File) -> Unit = { data, file -> PdfReportWriter.write(data, station, file, toDate) }
+        branding: ReportBranding = ReportBranding(station),
+        render: (ReportData, File) -> Unit = { data, file -> PdfReportWriter.write(data, branding, file, toDate) }
     ): List<File> {
         val gson = com.google.gson.Gson()
         // months first, so a year ending today can use the month that just ended
