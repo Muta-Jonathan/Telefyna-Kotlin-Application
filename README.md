@@ -104,6 +104,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `auditRetentionDays` | Days of daily audit logs to keep (default 60; `0` keeps everything) |
 | `loudnessLeveling` | `true` levels loudness between programmes, bumpers and streams (default `false`) |
 | `loudnessTargetDbfs` | Target programme level in dBFS RMS when levelling (default `-20`) |
+| `driveImport` | Copy new and changed files from a USB stick or SD card that has a `telefyna/` folder (default `true`); see [Remote management](#remote-management) |
 | `automationDisabled` | `true` plays only the first playlist, with no schedule |
 | `notificationsDisabled` | Hide the playback notification |
 | `alerts` | Email alerts: `mailer` (SMTP) and `subscribers` (emails, event category, attachments; `attachReports: true` also emails each new PDF report) |
@@ -141,6 +142,7 @@ Resume points follow the **file**, not its position in the folder. Adding, renam
 
 ## Remote management
 
+- **USB / SD drive:** plug in a drive with a `telefyna/` folder (same layout as the box's) and Telefyna copies new and changed media and `config.json` onto the box, then reloads. Nothing on the box is deleted, half-copied files never air, a broken config falls back to the last good one, and every import is in the audit log (`DRIVE_IMPORT`). Skipped while playlists play straight from the drive (`usingExternalStorage`).
 - **Files:** update `config.json` and media remotely with FTP ([FileZilla](https://filezilla-project.org/)), remote desktop ([RustDesk](https://rustdesk.com/)), or folder sync ([Syncthing](https://syncthing.net/)).
 - **Control files:** create an empty file in `telefynaAudit/`, and Telefyna acts on it within `wait` seconds:
 
@@ -353,7 +355,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [ ] Fix Swift bug: don't override, just replace manually.
 - [x] Investigate bumpers missing when loaded from scheduler.
 - [x] Handle player idling on stream; resume play/seekTo.
-- [ ] Add support for automatic drive syncing.
+- [x] Add support for automatic drive syncing.
 - [x] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30. Fixed by #85 (no Activity rebuild when a Bluetooth remote/keyboard connects or disconnects; verified with a virtual Bluetooth keyboard on the Android TV 13 emulator) and #86 (Bluetooth audio route changes no longer pause playout).
 - [ ] Support YouTube links and streams.
 - [x] Build reports from audits.
