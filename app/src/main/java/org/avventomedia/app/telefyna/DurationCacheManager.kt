@@ -64,22 +64,6 @@ object DurationCacheManager {
         return duration
     }
 
-    /**
-     * Forgets files that were deleted or replaced (their key no longer matches), so the index and its file don't
-     * grow for as long as the box runs. Call off the main thread, e.g. during midnight maintenance.
-     */
-    fun prune(context: Context) {
-        load(context)
-        val stale = durations.keys.filter { key ->
-            val file = File(key.substringBeforeLast('|').substringBeforeLast('|'))
-            !file.isFile || key(file) != key
-        }
-        if (stale.isNotEmpty()) {
-            stale.forEach { durations.remove(it) }
-            scheduleSave(context)
-        }
-    }
-
     /** Measures every playable file under [directory] that isn't indexed yet (call off the main thread). */
     fun indexDirectory(context: Context, directory: File) {
         Utils.playableFiles(directory).forEach { getDuration(context, it) }

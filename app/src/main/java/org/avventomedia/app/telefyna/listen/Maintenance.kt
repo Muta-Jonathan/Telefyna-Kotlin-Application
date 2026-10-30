@@ -70,7 +70,6 @@ class Maintenance {
                 Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
                 // Measure new/changed media once, in the background, for slot joins and intelligent sorting
                 Monitor.instance?.let { monitor ->
-                    org.avventomedia.app.telefyna.DurationCacheManager.prune(monitor)
                     monitor.configuration?.playlists?.filter { it.type != Playlist.Type.ONLINE }?.forEach { playlist ->
                         playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.indices?.forEach { i ->
                             org.avventomedia.app.telefyna.DurationCacheManager.indexDirectory(monitor, monitor.getDirectoryFromPlaylist(playlist, i))
