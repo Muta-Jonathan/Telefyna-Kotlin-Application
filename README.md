@@ -206,40 +206,73 @@ Reports are never pruned. Yearly reports are built from the monthly summaries, s
 
 ```mermaid
 graph TD
-    subgraph Core_Playout_Engine [Core Playout Engine]
-        M[Monitor Activity]
-        P[ExoPlayer]
-        FS[ForegroundService]
+    subgraph Storage [Storage]
+        Cfg[(config.json<br/>+ last known good)]
+        Media[(playlist/ · bumper/<br/>graphics)]
+        Audit[(telefynaAudit/<br/>logs · control files · reports)]
     end
 
-    subgraph Schedulers_Watchdogs [Schedulers and Watchdogs]
+    subgraph Process [Telefyna process]
+        FS[TelefynaForegroundService]
+        subgraph Playout_Core [Playout · survives the screen]
+            PO[Playout<br/>on-air state + queue]
+            P[ExoPlayer]
+            LL[LoudnessLeveling]
+            SR[SchemeRoutingDataSource<br/>file · HLS · DASH · RTSP · RTMP · SRT]
+        end
+        M[Monitor Activity<br/>screen · graphics · slate]
+        SE[ScheduleEngine<br/>pure, unit-tested]
+        MT[Maintenance]
+        DC[DurationCacheManager]
+        RR[ResumeResolver]
+        LG[Logger / AuditLog]
+        RG[ReportGenerator<br/>weekly · monthly · yearly PDF]
+    end
+
+    subgraph Triggers [Alarms and system events]
         AM((AlarmManager))
-        PS[PlaylistScheduler]
-        MR[MaintenanceReceiver]
-        KOA[KeepOnAirReceiver]
+        PS[PlaylistScheduler<br/>slot pre-roll]
+        MR[MaintenanceReceiver<br/>midnight]
+        KOA[KeepOnAirReceiver<br/>watchdog]
+        AS[AutoStart · DateChange]
     end
 
-    subgraph Data_Storage [Data Storage]
-        Cfg[(config.json)]
-        Ply[(Media Files)]
-    end
+    FS -->|owns, releases on stop| PO
+    PO --> P
+    P --> LL
+    P --> SR
+    SR --> Media
+    M -->|attaches to, never stops| PO
+    M --> MT
+    MT -->|plan the day| SE
+    MT --> Cfg
+    MT --> DC
+    M --> RR
+    M --> LG
+    LG --> Audit
+    RG --> Audit
 
-    Cfg -->|Loads configs| M
-    Ply -->|Streams Media| P
-
-    M -->|Controls| P
-    M -->|Prevents OS Kill| FS
-
-    AM -->|Triggers| PS
-    AM -->|Triggers| MR
-    AM -->|Triggers| KOA
-
-    PS -->|Auto-Relaunch| M
-    MR -->|Auto-Relaunch| M
-    KOA -->|Auto-Relaunch| M
+    AM --> PS
+    AM --> MR
+    AM --> KOA
+    PS -->|prepareSlot| M
+    MR --> MT
+    KOA -->|relaunch if gone| M
+    AS -->|boot, clock change| M
 ```
 
-**Scheduling** lives in `ScheduleEngine`, a pure-Kotlin, unit-tested class with no Android or clock of its own. It expands `schedules[]` into the playlist table, decides which slots run on a day, resolves clashes, and gives the current and upcoming slots. Each slot's alarm fires 15 s early (**pre-roll**): the slot's media is measured in the background and the switch is committed exactly on the start time, so an alarm delivered late by a power-saving TV box no longer delays it.
+| Component | Role |
+|---|---|
+| **`Playout`** | Process-wide owner of the ExoPlayer and what is on air (playlists, now playing, queued items). Held by `TelefynaForegroundService`, so the broadcast keeps playing when Android destroys and re-creates the screen. |
+| **`Monitor`** | The screen: PlayerView, logo, watermarks, lower thirds, ticker, slate. Makes switching decisions and attaches to the running `Playout`. A re-created `Monitor` reattaches without restarting the programme. |
+| **`ScheduleEngine`** | Pure Kotlin with no Android and no clock of its own. Expands `schedules[]` into the playlist table, decides which slots run on a day, resolves clashes, and returns the current and upcoming slots. |
+| **`Maintenance`** | Loads and validates the config (falls back to the last known good one), plans the day with `ScheduleEngine`, arms the slot alarms, and runs midnight maintenance. |
+| **`PlaylistScheduler`** | Receives a slot alarm 15 s early (**pre-roll**). The slot's media is measured in the background and the switch is committed exactly on the start time, so a late alarm on a power-saving box doesn't delay it. |
+| **`DurationCacheManager`** / **`ResumeResolver`** | Persistent media duration index (path, size, mtime), and resume points matched by file identity so adding or removing episodes doesn't break resuming. |
+| **`KeepOnAirReceiver`**, **`AutoStart`**, **`DateChange`** | Watchdog that relaunches the screen if it is gone; start on boot; reschedule when the clock or time zone changes. |
+| **`Logger`** / **`ReportGenerator`** | Daily audit logs and control files in `telefynaAudit/`; weekly, monthly and yearly PDF broadcast reports built from them. |
+
+**Switching uses a queue, not a stop.** The player is never stopped to change programme. A switch replaces the player's media items in place, so the video decoder is never torn down and the new programme starts without a frozen frame. The time to its first frame is logged (`FIRST_FRAME`) and reported. When a finite playlist reaches its last item, the next playlist (usually the fillers, with their bumpers) is queued behind it and the player rolls into it gaplessly. Every item is tagged with its playlist, so the handover is recorded in the audit log.
 
 The remaining target architecture (the cloud platform) is described in [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md).
 
