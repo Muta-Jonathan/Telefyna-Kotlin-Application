@@ -18,6 +18,7 @@
 - [Folder layout](#folder-layout)
 - [Configuration](#configuration)
 - [Remote management](#remote-management)
+- [Reports](#reports)
 - [Resilience & monitoring](#resilience--monitoring)
 - [Architecture](#architecture)
 - [Development](#development)
@@ -105,7 +106,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `loudnessTargetDbfs` | Target programme level in dBFS RMS when levelling (default `-20`) |
 | `automationDisabled` | `true` plays only the first playlist, with no schedule |
 | `notificationsDisabled` | Hide the playback notification |
-| `alerts` | Email alerts: `mailer` (SMTP) and `subscribers` (emails, event category, attachments) |
+| `alerts` | Email alerts: `mailer` (SMTP) and `subscribers` (emails, event category, attachments; `attachReports: true` also emails each new PDF report) |
 | `playlists[]` | The playlists; see below |
 | `schedules[]` | Time slots that reuse a playlist (`playlistId`) with their own `start`, `days`, `dates`, `graphics`, … When two slots start at the same time, one booked for **today's date** (a special event) always wins over a weekly/daily one; otherwise the one later in the list wins |
 
@@ -149,6 +150,7 @@ Resume points follow the **file**, not its position in the folder. Adding, renam
 | `reboot.txt` | Reboot the device (rooted devices only) |
 | `backupConfig.txt` | Write the current config, with resume positions, to `telefynaAudit/config.json` |
 | `backupConfigReset.txt` | Same, with resume positions reset |
+| `report.txt` | Generate week-, month- and year-to-date broadcast reports now (see [Reports](#reports)) |
 
 ---
 
@@ -170,6 +172,30 @@ Resume points follow the **file**, not its position in the folder. Adding, renam
 - **Midnight maintenance** reloads the config, logs device metrics, and reschedules the day without interrupting playout.
 - **Audit logs:** one file per day in `telefynaAudit/`, kept for `auditRetentionDays` (default 60, `0` keeps everything). On Android 11+ they also record the OS kill reason (`LOW_MEMORY`, `CRASH`, `ANR`, …) after a restart.
 - **Email alerts** for admin and broadcast events (configure `alerts`). Frequent bookkeeping events (key presses, resume saves) are logged but not emailed. The midnight maintenance mail can attach the config and recent audit logs.
+
+---
+
+## Reports
+
+Telefyna turns its audit logs into **PDF broadcast reports**. Each report covers:
+- airtime per playlist, with the share of programmes, fillers and the slate
+- on-air time per day (per month in the yearly report)
+- the most-aired programmes
+- reliability: restarts, crash-loop safe mode, stuck-player recoveries, watchdog relaunches, internet outages
+- schedule clashes and the most frequent errors
+
+- **Automatically:** at midnight maintenance, when a week (Monday–Sunday), a month or a year has ended.
+- **On demand:** create `report.txt` in `telefynaAudit/` to get week-, month- and year-to-date reports (`_to-date`, overwritten on each request).
+
+```text
+telefynaAudit/reports/
+└── 2026/
+    ├── weekly/   <Station>_weekly_2026-W44.pdf
+    ├── monthly/  <Station>_monthly_2026-10.pdf   (+ .json summary used for the yearly report)
+    └── <Station>_yearly_2026.pdf
+```
+
+Reports are never pruned. Yearly reports are built from the monthly summaries, so they stay complete even though daily logs are only kept for `auditRetentionDays`.
 
 ---
 
@@ -292,7 +318,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [ ] Add support for automatic drive syncing.
 - [x] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30. Fixed by #85 (no Activity rebuild when a Bluetooth remote/keyboard connects or disconnects; verified with a virtual Bluetooth keyboard on the Android TV 13 emulator) and #86 (Bluetooth audio route changes no longer pause playout).
 - [ ] Support YouTube links and streams.
-- [ ] Build reports from audits.
+- [x] Build reports from audits.
 - [ ] Read satellite channels and decoders as local playlists and streams.
 - [ ] Support streaming to HLS, Shoutcast, and Loudcast.
 

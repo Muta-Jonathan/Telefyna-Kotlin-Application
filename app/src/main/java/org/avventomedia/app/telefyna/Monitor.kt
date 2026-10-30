@@ -56,6 +56,9 @@ import kotlinx.coroutines.launch
 import org.apache.commons.lang3.StringUtils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
+import org.avventomedia.app.telefyna.audit.ReportBranding
+import org.avventomedia.app.telefyna.audit.ReportGenerator
+import org.avventomedia.app.telefyna.audit.ReportPeriod
 import org.avventomedia.app.telefyna.listen.Maintenance
 import org.avventomedia.app.telefyna.listen.TelefynaUnCaughtExceptionHandler
 import org.avventomedia.app.telefyna.modal.Config
@@ -475,6 +478,30 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     private fun getReInitializerFile(): File {
         return getControlFile("init.txt")
+    }
+
+    private fun getReportRequestFile(): File {
+        return getControlFile("report.txt")
+    }
+
+    /**
+     * Writes broadcast reports (PDF) for [periods] into telefynaAudit/reports/ and announces each one, so subscribers
+     * with attachReports get it by email. Call off the main thread: a year of summaries/logs is read.
+     */
+    fun generateReports(periods: List<ReportPeriod>, toDate: Boolean) {
+        try {
+            val auditDir = File(getAuditFilePath(this, ""))
+            Logger.flush() // today's lines must be on disk before they are read back
+            val station = configuration?.name ?: getString(R.string.app_name)
+            val logo = possibleExtensions.map { File("${getProgramsFolderPath(false)}${File.separator}logo.$it") }.firstOrNull { it.exists() }
+            val appVersion = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
+            val branding = ReportBranding(station, logo, appVersion, configuration?.version?.takeIf { it.isNotBlank() })
+            ReportGenerator.generate(auditDir, station, periods, toDate, branding = branding).forEach { file ->
+                Logger.log(AuditLog.Event.REPORT_GENERATED, file.nameWithoutExtension, file.absolutePath)
+            }
+        } catch (e: Exception) {
+            Logger.log(AuditLog.Event.ERROR, "Report generation failed: ${e.message}")
+        }
     }
 
     private fun getBumperDirectory(useExternalStorage: Boolean): String {
@@ -1906,6 +1933,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     restartApp()
                 }
                 getReInitializerFile().exists() -> performRealtimeConfigReload()
+                getReportRequestFile().exists() -> {
+                    getReportRequestFile().delete()
+                    // week, month and year so far, off the main thread
+                    val now = System.currentTimeMillis()
+                    Thread { generateReports(ReportPeriod.Kind.values().map { ReportPeriod.containing(it, now) }, toDate = true) }.start()
+                }
                 else -> {
                     if (getBackupConfigFile().exists()) backupConfig(false)
                     if (getBackupConfigResetFile().exists()) backupConfig(true)

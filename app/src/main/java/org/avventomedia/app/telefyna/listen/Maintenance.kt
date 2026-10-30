@@ -65,6 +65,8 @@ class Maintenance {
             // Metrics do network calls; keep them off the main thread and out of the scheduling path
             Thread {
                 Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
+                // Reports for the week/month/year that just ended, built before old logs are pruned
+                Monitor.instance?.generateReports(org.avventomedia.app.telefyna.audit.ReportPeriod.endedBy(System.currentTimeMillis()), toDate = false)
                 // Old daily logs are pruned off the main thread too
                 Monitor.instance?.let { monitor ->
                     val keepDays = monitor.configuration?.auditRetentionDays ?: 0
