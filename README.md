@@ -164,6 +164,7 @@ Resume points follow the **file**, not its position in the folder. Adding, renam
 - **Resume points** of resuming playlists are saved every 15 s, so after a power cut or crash they continue close to where they stopped.
 - **Foreground service** keeps the process at high priority.
 - **Survives display changes:** HDMI re-handshakes, TV power cycles and Bluetooth remotes no longer restart playout.
+- **Playout outlives the screen:** if Android destroys and re-creates the Telefyna screen (locale change, memory pressure), the programme keeps airing and the new screen reattaches to it.
 - **Gapless handovers:** when a programme playlist reaches its last item, the fillers are queued behind it, so playback rolls straight on with no stop, reload or audio fade.
 - **Error recovery:** bad or corrupt items are skipped, live streams rejoin the live edge after `BehindLiveWindow`, and network errors fall back to fillers and retry.
 - **Bad config uploads** are rejected and the last known good configuration keeps airing.
@@ -240,7 +241,7 @@ graph TD
 
 **Scheduling** lives in `ScheduleEngine`, a pure-Kotlin, unit-tested class with no Android or clock of its own. It expands `schedules[]` into the playlist table, decides which slots run on a day, resolves clashes, and gives the current and upcoming slots. Each slot's alarm fires 15 s early (**pre-roll**): the slot's media is measured in the background and the switch is committed exactly on the start time, so an alarm delivered late by a power-saving TV box no longer delays it.
 
-The remaining target architecture (the player in a service separate from the UI, plus the cloud platform) is described in [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md).
+The remaining target architecture (the cloud platform) is described in [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md).
 
 ---
 
@@ -285,7 +286,7 @@ The remaining target architecture (the player in a service separate from the UI,
 - [x] **Control Files Unreachable on Android 11+:** `telefynaAudit/` (logs and control files) kept at the storage root with All files access; the old `Android/data` location still honoured (P2-3, #134).
 - [x] **Email Alert Storm and BCC Leak:** Per-subscriber drafts (no BCC leak), audit logs actually attached, bodies always set, high-frequency events not emailed (P2-4, P2-5, #135). Digest/category routing left as a product decision.
 - [x] **Audit Log Rotation:** Daily logs older than `auditRetentionDays` (default 60) pruned at maintenance (P3, #136).
-- [ ] **Extract ScheduleEngine and PlayoutService:** `ScheduleEngine` extracted (pure, unit-tested) with slot pre-roll for exact start times; moving the player into a `PlayoutService` is next (P3).
+- [x] **Extract ScheduleEngine and PlayoutService:** `ScheduleEngine` extracted (pure, unit-tested) with slot pre-roll for exact start times; the player and on-air state now live in `Playout`, owned by the foreground service, so the screen can be destroyed and re-created without interrupting the broadcast (P3).
 
 ### Industry-Standard TV / Digital Signage Features
 - [ ] **Hardware Watchdog Integration:** Support for hardware-level watchdogs (pinging `/dev/watchdog`) in case the entire Android OS freezes.

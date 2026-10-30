@@ -67,6 +67,7 @@ class AuditLog {
         FADE_PLAYED("Fade played, %s"),
         // not emailed (system category): logged on every switch
         // not emailed (system category)
+        PLAYOUT_REATTACHED("New screen reattached to playout still airing playlist: %s"),
         SLOT_PREROLL("Preparing slot: %s, starting in %d ms"),
         FIRST_FRAME("First picture %d ms after switching to playlist: %s"),
 

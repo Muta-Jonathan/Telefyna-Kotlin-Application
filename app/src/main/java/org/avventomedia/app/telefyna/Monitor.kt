@@ -141,6 +141,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     var safeMode = SafeMode.OFF
         private set
     private var slateShown = false
+    /** This screen joined a playout that kept running while no screen existed (until its first schedule). */
+    private var reattachedToPlayout = false
     // Guards emptyReplacer chains (A -> B -> A) from recursing forever
     private var emptyHops = 0
 
@@ -162,18 +164,33 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     var maintenance: Maintenance? = null
 
-    private var nowPlayingIndex: Int? = null
-    private var failedBecauseOfInternetIndex: Int? = null
+    // On-air state lives in Playout so it survives the Activity being destroyed and re-created
+    private var nowPlayingIndex: Int?
+        get() = Playout.nowPlayingIndex
+        set(value) { Playout.nowPlayingIndex = value }
+    private var failedBecauseOfInternetIndex: Int?
+        get() = Playout.failedBecauseOfInternetIndex
+        set(value) { Playout.failedBecauseOfInternetIndex = value }
 
-    private var player: ExoPlayer? = null
+    private var player: ExoPlayer?
+        get() = Playout.player
+        set(value) { Playout.player = value }
     // Always in the audio chain; enabled/disabled from config on every (re)load without rebuilding the player
-    private val loudnessLeveling = LoudnessLevelingAudioProcessor()
+    private val loudnessLeveling get() = Playout.loudnessLeveling
     private var previousPlayer: ExoPlayer? = null
-    private var currentPlaylist: Playlist? = null
-    private var playlistByIndex: MutableList<Playlist> = mutableListOf()
-    private var programItems: MutableList<MediaItem> = mutableListOf()
+    private var currentPlaylist: Playlist?
+        get() = Playout.currentPlaylist
+        set(value) { Playout.currentPlaylist = value }
+    private var playlistByIndex: MutableList<Playlist>
+        get() = Playout.playlistByIndex
+        set(value) { Playout.playlistByIndex = value }
+    private var programItems: MutableList<MediaItem>
+        get() = Playout.programItems
+        set(value) { Playout.programItems = value }
     // Next playlist queued behind the last item for a gapless handover
-    private var upcomingProgramItems: MutableList<MediaItem>? = null
+    private var upcomingProgramItems: MutableList<MediaItem>?
+        get() = Playout.upcomingProgramItems
+        set(value) { Playout.upcomingProgramItems = value }
     // When the current switch started loading, to log how long the new picture takes (0 = nothing pending)
     private var switchStartedAt = 0L
     private lateinit var tickerRecyclerView: RecyclerView
@@ -184,9 +201,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private val lowerThirdJobs = mutableListOf<Job>()
 
     private var lowerThirdLoop = 1
-    private var fillingForLackOfInternet = false
-    private var nowProgramItem: Int? = 0
-    private var startOnePlayProgramItem: Int? = null
+    private var fillingForLackOfInternet: Boolean
+        get() = Playout.fillingForLackOfInternet
+        set(value) { Playout.fillingForLackOfInternet = value }
+    private var nowProgramItem: Int?
+        get() = Playout.nowProgramItem
+        set(value) { Playout.nowProgramItem = value }
+    private var startOnePlayProgramItem: Int?
+        get() = Playout.startOnePlayProgramItem
+        set(value) { Playout.startOnePlayProgramItem = value }
 
 
     var dateFormat: SimpleDateFormat? = null
@@ -394,6 +417,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // KeepOnAirReceiver is now manifest-registered (survives process death)
 
         ensureBackgroundRelaunchAllowed()
+
+        // A playout that survived a previous screen: show it and keep receiving its events before maintenance runs
+        if (Playout.isOnAir) {
+            reattachedToPlayout = true
+            Playout.attach(this)
+            getPlayerView(true).player = player
+            Logger.log(AuditLog.Event.PLAYOUT_REATTACHED, getNowPlayingPlaylistLabel())
+        }
 
         // Initialize permissions and start maintenance only when permitted
         startMaintenanceIfPermitted()
@@ -630,9 +661,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     @OptIn(UnstableApi::class)
-    private fun buildPlayer(context: Context): ExoPlayer {
+    private fun buildPlayer(activityContext: Context): ExoPlayer {
+        val context = activityContext.applicationContext // the player outlives this Activity
         val renderersFactory = instance?.let { 
-            TelefynaRenderersFactory(it, loudnessLeveling).apply {
+            TelefynaRenderersFactory(it.applicationContext, loudnessLeveling).apply {
                 setEnableAudioTrackPlaybackParams(true)
                 setEnableDecoderFallback(true)
             }
@@ -955,10 +987,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         } else {
                             player!!.volume = 1f
                         }
-                        instance?.let { player!!.addListener(it) }
+                        Playout.attach(this) // this screen receives the player's events (once)
                         player!!.playWhenReady = true
                         playerView.player = player // Explicitly attach new player to PlayerView
-                        player!!.addListener(this) // Add listener once
                         nowProgramItem?.let { programItems[it] }?.let { getMediaItemName(it) }?.let {
                             Logger.log(
                                 if (isCurrentSlot) AuditLog.Event.PLAYLIST_PLAY else AuditLog.Event.PLAYLIST_SWITCH,
@@ -1308,6 +1339,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
     fun getNowPlayingLabel(): String = getNowPlayingPlaylistLabel()
 
+    /** True once, for the first schedule after this screen reattached to a running playout. */
+    fun consumeReattach(): Boolean = reattachedToPlayout.also { reattachedToPlayout = false }
+
+    /** Re-apply the on-air playlist's graphics on this (new) screen without touching playback. */
+    @RequiresApi(Build.VERSION_CODES.M)
+    fun redrawGraphics() {
+        triggerGraphics(player?.currentPosition ?: 0L)
+    }
+
     private fun getNowPlayingPlaylistLabel(): String {
         val playlistName = nowPlayingIndex?.let { currentPlaylist?.name } ?: ""
         return "$playlistName #$nowPlayingIndex"
@@ -1338,8 +1378,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onDestroy() {
         super.onDestroy()
         shutDownHook()
-        endPlayerSafely(player);
-        endPlayerSafely(previousPlayer);
+        // Keep the player (owned by Playout/TelefynaForegroundService) airing: just let go of it.
+        // A new Monitor reattaches; it is released only when the service stops.
+        Playout.detach(this)
+        getPlayerView(false).player = null
+        endPlayerSafely(previousPlayer)
 
         maintenanceHandler?.removeCallbacksAndMessages(null)
         handler?.removeCallbacksAndMessages(null)

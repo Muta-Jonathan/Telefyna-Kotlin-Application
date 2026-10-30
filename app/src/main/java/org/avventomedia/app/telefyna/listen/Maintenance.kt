@@ -11,6 +11,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import org.avventomedia.app.telefyna.Metrics
 import org.avventomedia.app.telefyna.Monitor
+import org.avventomedia.app.telefyna.Playout
 import org.avventomedia.app.telefyna.ScheduleEngine
 import org.avventomedia.app.telefyna.ScheduledSlot
 import org.avventomedia.app.telefyna.Utils
@@ -214,8 +215,11 @@ class Maintenance {
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     private fun playCurrentSlot(monitor: Monitor, current: ScheduledSlot?) {
+        val reattached = monitor.consumeReattach()
         when {
             current != null -> monitor.switchNow(current.index, true, monitor)
+            // A new screen joined a playout that kept running: keep what is on air (only a due slot interrupts it)
+            reattached && Playout.isOnAir -> monitor.redrawGraphics()
             // Midnight maintenance before today's first slot: let yesterday's programme run to its end
             // (finite playlists hand over to fillers on completion) instead of cutting it at 00:00
             monitor.isPlayingScheduledSlot() -> Logger.log(AuditLog.Event.PLAYLIST_CARRY_OVER, monitor.getNowPlayingLabel())

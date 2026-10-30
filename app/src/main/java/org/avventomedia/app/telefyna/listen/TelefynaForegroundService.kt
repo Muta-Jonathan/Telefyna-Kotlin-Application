@@ -64,6 +64,12 @@ class TelefynaForegroundService : Service() {
         return START_STICKY
     }
 
+    override fun onDestroy() {
+        // The service owns the process-wide playout: release the player with it
+        org.avventomedia.app.telefyna.Playout.release()
+        super.onDestroy()
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null // We are not using a bound service
     }
