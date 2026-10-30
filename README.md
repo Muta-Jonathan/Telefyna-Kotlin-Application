@@ -137,6 +137,21 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 
 Resume points follow the **file**, not its position in the folder. Adding, renaming the order of, or removing *other* files doesn't reset a series or shift it to the wrong episode. If the remembered file itself is removed, playback continues with the file now in its place.
 
+### Satellite channels and decoders
+
+An Android TV box has no satellite tuner, so a satellite channel reaches Telefyna as a **network stream** from a receiver or tuner on the same network. Add it as an `ONLINE` playlist (`urlOrFolder` = the stream URL). If the feed drops, Telefyna waits `wait` seconds and then plays the fillers until it returns, like any other stream.
+
+| Source | Example URL | Notes |
+|---|---|---|
+| Enigma2 receiver (Vu+, Dreambox, Zgemma, …) | `http://192.168.1.50:8001/1:0:19:…` | Copy the service reference from the receiver's web interface (or a `.m3u` it exports). Stream port 8001; 8002 for transcoded streams on boxes that support it. |
+| TVHeadend server with a satellite card | `http://192.168.1.60:9981/stream/channel/<channel-id>` | One dish feeds many boxes. Use a TVHeadend user without a password or add `?auth=<token>` from its "Persistent auth". |
+| SAT>IP server or minisatip | `http://192.168.1.70:8080/?src=1&freq=11538&pol=h&msys=dvbs2&sr=22000&pids=0,17,…` | Use the server's **HTTP** stream (minisatip: the `-x` port, 8080 by default). Its RTSP mode carries MPEG-TS over RTP, which the player may not handle. |
+| Hardware encoder fed by a decoder's HDMI or SDI | `srt://encoder:9000` or `rtmp://…` | For decoders with only HDMI out (most pay-TV decoders): put a small HDMI encoder in between. |
+
+- **Encrypted (pay-TV) channels** can only come decrypted from a licensed receiver. Telefyna can't decrypt them, and rebroadcasting needs the rights.
+- **Plain HTTP** is allowed for these LAN sources (`network_security_config.xml` permits cleartext).
+- **Recording** a satellite channel to files on a schedule (to air later as a local playlist) is not supported yet.
+
 ---
 
 ## Remote management
