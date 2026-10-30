@@ -350,7 +350,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [x] Test playlist modification, etc.
 - [x] Handle current play at switch not buffering video.
 - [x] Log every keypress.
-- [ ] Fix Swift bug: don't override, just replace manually.
+- [x] Fix Swift bug: don't override, just replace manually.
 - [x] Investigate bumpers missing when loaded from scheduler.
 - [x] Handle player idling on stream; resume play/seekTo.
 - [ ] Add support for automatic drive syncing.
