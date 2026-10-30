@@ -44,6 +44,7 @@ class AuditLog {
         PLAYLIST_COMPLETED("$SPLITTER] Completed playing playlist: %s"),
         PLAYLIST_EXHAUSTED("$SPLITTER] Exhausted all media items in folder for playlist: %s. Last played item: %s. Switching to filler."),
         PLAYLIST_ERROR("$SPLITTER] Error playing playlist: %s"),
+        RANDOM_FOLDER_PICKED("Playlist: %s picked folder: %s (of %d)"),
         SCHEDULE_CLASH("Slots clash at %s: airing %s instead of %s"),
         PLAYLIST_CARRY_OVER("Continuing playlist: %s past midnight until it ends or the next slot starts"),
 
@@ -80,7 +81,7 @@ class AuditLog {
             val schedulers = arrayOf(
                 PLAYLIST, PLAYLIST_PLAY, PLAYLIST_SWITCH, PLAYING_NOW,
                 PLAYLIST_EMPTY_PLAY, PLAYLIST_MODIFIED, PLAYLIST_ITEM_CHANGE,
-                PLAYLIST_COMPLETED, PLAYLIST_ERROR, SCHEDULE_CLASH, PLAYLIST_CARRY_OVER, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
+                PLAYLIST_COMPLETED, PLAYLIST_ERROR, SCHEDULE_CLASH, RANDOM_FOLDER_PICKED, PLAYLIST_CARRY_OVER, DISPLAY_LOGO_OFF, DISPLAY_LOGO_ON,
                 DISPLAY_NEWS_ON, DISPLAY_NEWS_OFF, LOWER_THIRD_ON, LOWER_THIRD_OFF,
                 DISPLAY_PROGRAM_WATERMARK_OFF, DISPLAY_LIVE_LOGO_ON,
                 DISPLAY_REPEAT_PROGRAM_WATERMARK_ON

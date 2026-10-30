@@ -45,7 +45,10 @@ data class Playlist(
     // Index of playlist to replace with when empty
     var emptyReplacer: Int? = null,
     var seekTo: Seek = Seek(0, 0),
-    var repeat: Repeat? = null
+    var repeat: Repeat? = null,
+    // LOCAL_RANDOMIZED only: pick one random sub-folder (e.g. one series) per play and air it in order,
+    // instead of shuffling the files of every sub-folder together
+    var oneFolderAtATime: Boolean = false
 ) {
 
     val isPlayingGeneralBumpers: Boolean

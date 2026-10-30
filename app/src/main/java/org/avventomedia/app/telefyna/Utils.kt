@@ -123,6 +123,25 @@ object Utils {
         }
     }
 
+    /** Immediate sub-folders of [roots] that contain at least one playable file (at any depth), by name. */
+    fun programFolders(roots: List<File>): List<File> {
+        return roots.flatMap { root -> root.listFiles()?.filter { it.isDirectory && playableFiles(it).isNotEmpty() }.orEmpty() }
+            .sortedBy { it.name }
+    }
+
+    /** All playable files under [folder] (sub-folders included), in alphabetical order. */
+    fun playableFiles(folder: File): List<File> {
+        val entries = folder.listFiles()?.sortedBy { it.name } ?: return emptyList()
+        return entries.flatMap { if (it.isDirectory) playableFiles(it) else if (validPlayableItem(it)) listOf(it) else emptyList() }
+    }
+
+    /** A random folder, avoiding [lastPicked] (absolute path) when there is a choice. */
+    fun pickFolder(folders: List<File>, lastPicked: String?, random: kotlin.random.Random = kotlin.random.Random.Default): File? {
+        if (folders.isEmpty()) return null
+        val candidates = folders.filter { it.absolutePath != lastPicked }.ifEmpty { folders }
+        return candidates[random.nextInt(candidates.size)]
+    }
+
     fun isValidEmail(email: String): Boolean {
         val regex = "^[\\w-_\\.+]*[\\w-_\\.]\\@([\\w]+\\.)+[\\w]+[\\w]$"
         return email.matches(Regex(regex))
