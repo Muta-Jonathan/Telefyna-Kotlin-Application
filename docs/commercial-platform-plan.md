@@ -1,7 +1,7 @@
 # Telefyna Cloud: implementation plan
 
 **Status:** proposal for review · **Owner:** Avvento Media · **Date:** 30 October 2026
-**Designs:** [Telefyna Platform Design canvas](https://claude.ai/artifact/3gnD7V6DKPYBvxswiSgjjp) (private until shared): three visual directions plus clickable flows for onboarding, the schedule builder, device detail and billing.
+**Designs:** [Telefyna Platform Design canvas](https://claude.ai/artifact/3gnD7V6DKPYBvxswiSgjjp) (private until shared): three visual directions for the Overview, and a clickable prototype of the whole product in the recommended direction: sign-in with two-step codes, onboarding and box pairing, schedule builder, library and playlist editor (every type), graphics with live preview, exports (EPG/DVR, print, config history), devices with every output state, device detail, reports, settings (station, team, alerts, radio stream, advanced), billing with days or hours left at each stage, the Avvento admin payments queue, and a board of edge states.
 
 This plan turns the *Commercial Platform (Future)* roadmap items into one product. The configuration tool, live device status, reports, billing and licences live in a single web app, **Telefyna Cloud**, and Telefyna boxes connect to it.
 
@@ -92,8 +92,13 @@ All endpoints are box-initiated, JSON, versioned, and rate-limited per device.
 |---|---|
 | Mobile money (MTN, Airtel) | Through an aggregator that covers Uganda and neighbouring markets (Flutterwave or Pesapal; choose after comparing fees, payout time and recurring-billing support). The customer approves each renewal with their PIN, so renewal is "request to pay" with reminders, not silent auto-debit. |
 | Cards | Same aggregator's hosted card fields, so card data never touches our servers (keeps PCI scope minimal). |
-| Invoice / bank transfer | PDF invoice emailed 14 days before renewal. An admin marks it paid, which extends the licence. |
+| Invoice / bank transfer | PDF invoice emailed 14 days before renewal, with a unique reference (e.g. `TFY-2026-0142`) to put in the transfer narration. See *Confirming bank transfers* below. |
 | PayPal | Optional, to confirm. |
+
+**Confirming bank transfers.** Bank transfers don't notify us, so each one is matched by hand at first and automatically later:
+1. The customer clicks **I've paid** on the invoice and can attach the bank slip. The invoice shows *Awaiting confirmation* and their grace period is paused.
+2. Avvento staff see it in the admin console's **Payments to confirm** queue (reference, customer, amount, claim date, slip). They check the bank statement and click **Mark paid**, which extends the licence on all the customer's boxes and emails a receipt. **Can't find it** asks the customer for the slip or the right reference; the grace period resumes after 3 days.
+3. Later: upload the bank's statement CSV and the system matches transactions by reference and amount, leaving staff only to confirm.
 
 All provider callbacks go through **verified webhooks** (signature check, idempotent on provider reference). A payment only extends a subscription after server-side verification with the provider's API, never on the browser redirect alone.
 
@@ -106,6 +111,7 @@ All provider callbacks go through **verified webhooks** (signature check, idempo
 | Signed config | Verify signature; on failure keep the last good config (the same path as today's bad-config fallback). |
 | Licence enforcement | Offline verification and the degradation steps; on-screen mark drawn by the existing graphics layer. |
 | Settings | Unpair, cloud on/off, show device ID. |
+| Output health | Detect what the box really puts out, not just what is scheduled: picture frozen (no new rendered frames while playback advances), black picture, silence (audio level), audio only (video decoder failed), buffering. Reported in each heartbeat; the box also reacts on its own (restart the player, then fall back to fillers or the slate). |
 
 These build on what the app already has: `Playout`, last-known-good config, audit log, PDF reports, and the slate.
 
@@ -114,7 +120,7 @@ These build on what the app already has: `Playout`, last-known-good config, audi
 | Phase | Scope | Exit criteria |
 |---|---|---|
 | **0. Foundations** (2 weeks) | Laravel skeleton on Bluehost, CI deploy, auth with 2FA, organisations/roles, design system from the chosen direction | Sign up, sign in, invite a teammate on staging |
-| **1. Schedule builder (free tier)** (4–5 weeks) | Rebuild today's config tool: playlists (all current types incl. `LOCAL_RANDOMIZED_ONE`), schedules, graphics, alerts, `audioStream`, preview grid, PDF print, import/export `config.json` | Every field the app reads round-trips; existing configs import cleanly; old tool can be retired |
+| **1. Schedule builder (free tier)** (4–5 weeks) | Rebuild today's config tool: playlists (all current types incl. `LOCAL_RANDOMIZED_ONE`), schedules, graphics, alerts, `audioStream`, `driveImport`, preview grid, PDF print, import/export `config.json` with version history, and the EPG/DVR exporter (TSV for mySDAtv, CSV, plus XMLTV; 7, 14 or 30 days; a stable guide link that always serves the published schedule) | Every field the app reads round-trips; existing configs import cleanly; old tool can be retired |
 | **2. Devices** (4 weeks) | Pairing, heartbeat, live status dashboard, config publish to boxes, remote commands, log and report upload; app changes in section 8 | A box pairs in under 2 minutes; publishing reaches all boxes within one heartbeat; box survives cloud outage |
 | **3. Billing and licences** (4 weeks) | Plans, aggregator integration (mobile money + card), invoices, signed licences, degradation on box | Test payments in sandbox; renewal, failure and grace paths tested end to end on a box |
 | **4. Reports and alerts** (2–3 weeks) | Cloud-side as-run and uptime reports across boxes, email alerts (SMS later), audit search | Weekly/monthly reports per station match box PDFs |
