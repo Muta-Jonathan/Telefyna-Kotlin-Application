@@ -1054,9 +1054,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             when (state) {
                 Player.STATE_ENDED -> {
                     val playlist = playlistByIndex.getOrNull(it) ?: return
-                    val isFiniteType = playlist.type == Playlist.Type.LOCAL_SEQUENCED ||
-                            playlist.type == Playlist.Type.LOCAL_RANDOMIZED ||
-                            playlist.isResuming()
+                    val isFiniteType = playlist.isFiniteLocal()
                     val isAtLastItem = player?.currentMediaItemIndex == (programItems.size - 1)
 
                     // Only switch to fillers when a truly finite playlist finishes
@@ -1089,9 +1087,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         nowPlayingIndex?.let {
-            val isFiniteType = currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
-                    currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED ||
-                    currentPlaylist?.isResuming() == true
+            val isFiniteType = currentPlaylist?.isFiniteLocal() == true
 
             // ✅ We are *about to* play the final item — don't switch yet
             val aboutToPlayLast = nowProgramItem != null && nowProgramItem!! == programItems.size - 1
@@ -1204,9 +1200,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     Logger.log(AuditLog.Event.ERROR, "Only 1 item in folder and it crashed. Switching to filler to prevent infinite loop.")
                     switchNow(getSecondDefaultIndex(), false, this)
                 } else {
-                    val isFiniteType = currentPlaylist?.type == Playlist.Type.LOCAL_SEQUENCED ||
-                            currentPlaylist?.type == Playlist.Type.LOCAL_RANDOMIZED ||
-                            currentPlaylist?.isResuming() == true
+                    val isFiniteType = currentPlaylist?.isFiniteLocal() == true
                     if (isFiniteType) {
                         val lastItemName = currentItem?.let { getMediaItemName(it) } ?: "Unknown"
                         Logger.log(AuditLog.Event.PLAYLIST_EXHAUSTED, getPlayingAtIndexLabel(nowPlayingIndex), "Corrupted: $lastItemName")

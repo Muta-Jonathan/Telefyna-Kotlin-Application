@@ -4,6 +4,7 @@ import org.avventomedia.app.telefyna.modal.Playlist
 import org.avventomedia.app.telefyna.modal.Config
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TelefynaPlaylistTest {
@@ -42,5 +43,16 @@ class TelefynaPlaylistTest {
         // When parent playlist is inactive, the child schedule should become inactive after inheritance
         schedule.schedule(parentPlaylist)
         assertFalse("Schedule should be inactive when parent playlist is inactive", schedule.active)
+    }
+
+    @Test
+    fun testRandomizedAndFiniteTypes() {
+        assertTrue(Playlist(type = Playlist.Type.LOCAL_RANDOMIZED).isRandomized())
+        assertTrue(Playlist(type = Playlist.Type.LOCAL_RANDOMIZED_ONE).isRandomized())
+        assertFalse(Playlist(type = Playlist.Type.LOCAL_SEQUENCED).isRandomized())
+        // every local type ends and hands over to fillers; online streams don't
+        Playlist.Type.values().forEach { type ->
+            assertEquals(type != Playlist.Type.ONLINE, Playlist(type = type).isFiniteLocal())
+        }
     }
 }

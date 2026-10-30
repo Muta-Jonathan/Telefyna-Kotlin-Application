@@ -180,6 +180,8 @@ class Maintenance {
             if (it.type == Playlist.Type.ONLINE) {
                 // HLS, DASH, RTSP, RTMP and SRT are all resolved by the player's SchemeRoutingDataSource
                 it.urlOrFolder?.trim()?.let { url -> programs.add(MediaItem.fromUri(url)) }
+            } else if (it.type == Playlist.Type.LOCAL_RANDOMIZED_ONE && retrieveOneRandomFolder(it, programs)) {
+                // one random sub-folder, in order
             } else {
                 it.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.forEachIndexed { i, _ ->
                     val pgms = mutableListOf<MediaItem>()
@@ -195,6 +197,28 @@ class Maintenance {
             }
         }
         return programs
+    }
+
+    /**
+     * LOCAL_RANDOMIZED_ONE: picks one random sub-folder (not the same as last time when there is a
+     * choice) and adds its files in alphabetical order. Returns false when there are no sub-folders with media,
+     * so the caller falls back to shuffling all files.
+     */
+    @OptIn(UnstableApi::class)
+    private fun retrieveOneRandomFolder(playlist: Playlist, programs: MutableList<MediaItem>): Boolean {
+        val monitor = Monitor.instance ?: return false
+        val roots = playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.indices?.map { monitor.getDirectoryFromPlaylist(playlist, it) }.orEmpty()
+        val folders = Utils.programFolders(roots)
+        val prefs = monitor.getSharedPreferences(Monitor.PREFERENCES, android.content.Context.MODE_PRIVATE)
+        val key = "RANDOM_FOLDER_${playlist.urlOrFolder}"
+        val picked = Utils.pickFolder(folders, prefs.getString(key, null)) ?: return false
+        prefs.edit().putString(key, picked.absolutePath).apply()
+        Utils.playableFiles(picked).forEach { file ->
+            val uri = android.net.Uri.fromFile(file)
+            programs.add(MediaItem.Builder().setUri(uri).setMediaId(uri.toString()).build())
+        }
+        Logger.log(AuditLog.Event.RANDOM_FOLDER_PICKED, playlist.name ?: "", picked.name, folders.size)
+        return true
     }
 
     @OptIn(UnstableApi::class)

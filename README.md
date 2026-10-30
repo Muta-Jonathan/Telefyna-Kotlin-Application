@@ -113,7 +113,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 
 | Playlist field | Meaning |
 |---|---|
-| `type` | `ONLINE`, `LOCAL_SEQUENCED`, `LOCAL_RANDOMIZED`, `LOCAL_RESUMING`, `LOCAL_RESUMING_SAME`, `LOCAL_RESUMING_NEXT`, `LOCAL_RESUMING_ONE` |
+| `type` | `ONLINE`, `LOCAL_SEQUENCED`, `LOCAL_RANDOMIZED`, `LOCAL_RANDOMIZED_ONE`, `LOCAL_RESUMING`, `LOCAL_RESUMING_SAME`, `LOCAL_RESUMING_NEXT`, `LOCAL_RESUMING_ONE` |
 | `urlOrFolder` | Stream URL, or folder name(s) under `playlist/` (comma-separated) |
 | `start` | Slot start time, `HH:mm` |
 | `days` / `dates` | Weekdays `1-7` (Sun–Sat) and/or dates `dd-MM-yyyy`; neither = daily |
@@ -122,6 +122,10 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `emptyReplacer` | Index of the playlist to play if this one is empty |
 | `repeat` | For resuming playlists: `DAILY`, `WEEKLY`, `MONTHLY`, `QUARTERLY`, `ANNUALLY` |
 | `graphics` | `displayLogo`, `logoPosition` (`TOP`/`BOTTOM`), `displayLiveLogo`, `displayRepeatWatermark`, `news` (`messages` separated by `~~`, `startMinute`, `showTime`), `lowerThirds[]` (`file`, `starts` in minutes, `replays`) |
+
+**Random modes:**
+- `LOCAL_RANDOMIZED` shuffles all files, from all sub-folders, together.
+- `LOCAL_RANDOMIZED_ONE` picks **one random sub-folder** (e.g. one series) each time it plays and airs it in order. It never picks the same one twice in a row when there's a choice, and falls back to a full shuffle if there are no sub-folders.
 
 **Resuming modes:**
 - `LOCAL_RESUMING` resumes at the exact position.
@@ -276,7 +280,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 
 ### Backlog
 - [x] Auto-installation of config under resources if non-existent at first run.
-- [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
+- [x] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
 - [x] Enhance resuming playlists (`LOCAL_RESUMING*`) to track the actual filename (`mediaId`) instead of just the index, preventing playlist resets or skipped episodes when files are added or removed from the folder.
 - [x] Test if dates down the playlist overwrite the schedule.
 - [x] Test playlist modification, etc.
