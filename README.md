@@ -120,6 +120,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `usingExternalStorage` | Read from USB / SD instead of internal storage |
 | `playingGeneralBumpers`, `specialBumperFolder` | Bumper selection (non-resuming local playlists) |
 | `emptyReplacer` | Index of the playlist to play if this one is empty |
+| `oneFolderAtATime` | `LOCAL_RANDOMIZED` only: each play picks **one random sub-folder** (e.g. one series) and airs it in order, never the same one twice in a row when there is a choice. Default `false` shuffles all files together |
 | `repeat` | For resuming playlists: `DAILY`, `WEEKLY`, `MONTHLY`, `QUARTERLY`, `ANNUALLY` |
 | `graphics` | `displayLogo`, `logoPosition` (`TOP`/`BOTTOM`), `displayLiveLogo`, `displayRepeatWatermark`, `news` (`messages` separated by `~~`, `startMinute`, `showTime`), `lowerThirds[]` (`file`, `starts` in minutes, `replays`) |
 
@@ -276,7 +277,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 
 ### Backlog
 - [x] Auto-installation of config under resources if non-existent at first run.
-- [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
+- [x] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
 - [x] Enhance resuming playlists (`LOCAL_RESUMING*`) to track the actual filename (`mediaId`) instead of just the index, preventing playlist resets or skipped episodes when files are added or removed from the folder.
 - [x] Test if dates down the playlist overwrite the schedule.
 - [x] Test playlist modification, etc.
