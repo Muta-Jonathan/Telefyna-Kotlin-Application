@@ -119,7 +119,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `start` | Slot start time, `HH:mm` |
 | `days` / `dates` | Weekdays `1-7` (Sun–Sat) and/or dates `dd-MM-yyyy`; neither = daily |
 | `usingExternalStorage` | Read from USB / SD instead of internal storage |
-| `playingGeneralBumpers`, `specialBumperFolder` | Bumper selection (non-resuming local playlists) |
+| `playingGeneralBumpers`, `specialBumperFolder` | Bumper selection (non-resuming local playlists). Bumpers air on every start of the playlist: scheduled, at boot, or after a gapless handover. Resuming playlists never get bumpers, and a box that joins a slot late seeks past them to stay on the clock |
 | `emptyReplacer` | Index of the playlist to play if this one is empty |
 | `intelligentSort` | Randomized playlists: air programmes of a minute or longer first and short clips last, so the end of a slot fills with shorts (default `false`) |
 | `repeat` | For resuming playlists: `DAILY`, `WEEKLY`, `MONTHLY`, `QUARTERLY`, `ANNUALLY` |
@@ -318,7 +318,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [x] Handle current play at switch not buffering video.
 - [x] Log every keypress.
 - [ ] Fix Swift bug: don't override, just replace manually.
-- [ ] Investigate bumpers missing when loaded from scheduler.
+- [x] Investigate bumpers missing when loaded from scheduler.
 - [x] Handle player idling on stream; resume play/seekTo.
 - [ ] Add support for automatic drive syncing.
 - [x] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30. Fixed by #85 (no Activity rebuild when a Bluetooth remote/keyboard connects or disconnects; verified with a virtual Bluetooth keyboard on the Android TV 13 emulator) and #86 (Bluetooth audio route changes no longer pause playout).

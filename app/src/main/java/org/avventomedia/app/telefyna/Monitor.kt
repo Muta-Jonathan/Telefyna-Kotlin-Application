@@ -697,15 +697,39 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         return player as ExoPlayer
     }
 
-    private fun addBumpers(bumpers: MutableList<MediaItem>, bumperFolder: File, addedFirstItem: Boolean) {
+    private fun addBumpers(bumpers: MutableList<MediaItem>, bumperFolder: File, addedFirstItem: Boolean, playlist: Playlist) {
         if (bumperFolder.exists() && bumperFolder.listFiles()?.isNotEmpty() == true) {
-            currentPlaylist?.let {
-                Utils.setupLocalPrograms(bumpers, bumperFolder, addedFirstItem,
-                    it
-                )
-                bumpers.reverse()
-            }
+            Utils.setupLocalPrograms(bumpers, bumperFolder, addedFirstItem, playlist)
+            bumpers.reverse()
         }
+    }
+
+    /**
+     * Intro and outro bumpers of a non-resuming local playlist: intros general, playlist, special;
+     * outros special, playlist, general. Used for a normal switch and for a playlist queued gaplessly.
+     */
+    private fun bumpersFor(playlist: Playlist): Pair<List<MediaItem>, List<MediaItem>> {
+        val bumperFolder = getBumperDirectory(playlist.isUsingExternalStorage)
+        val generalBumpersIntro = mutableListOf<MediaItem>()
+        val generalBumpersOutro = mutableListOf<MediaItem>()
+        val specialBumpersIntro = mutableListOf<MediaItem>()
+        val specialBumpersOutro = mutableListOf<MediaItem>()
+        val playListIntroBumpers = mutableListOf<MediaItem>()
+        val playListOutroBumpers = mutableListOf<MediaItem>()
+        if (playlist.isPlayingGeneralBumpers) {
+            addBumpers(generalBumpersIntro, File("$bumperFolder${File.separator}General-INTRO"), false, playlist)
+            addBumpers(generalBumpersOutro, File("$bumperFolder${File.separator}General-OUTRO"), false, playlist)
+        }
+        val specialBumperFolder = playlist.specialBumperFolder
+        if (!specialBumperFolder.isNullOrBlank()) {
+            addBumpers(specialBumpersIntro, File("$bumperFolder${File.separator}$specialBumperFolder-INTRO"), false, playlist)
+            addBumpers(specialBumpersOutro, File("$bumperFolder${File.separator}$specialBumperFolder-OUTRO"), false, playlist)
+        }
+        val playlistFolder = playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.get(0)
+        addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}$playlistFolder-INTRO"), false, playlist)
+        addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}$playlistFolder-OUTRO"), false, playlist)
+        return (generalBumpersIntro + playListIntroBumpers + specialBumpersIntro) to
+                (specialBumpersOutro + playListOutroBumpers + generalBumpersOutro)
     }
 
     private fun getPlaylistIndex(index: Int): Int {
@@ -861,45 +885,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                     nowPosition = if (nowPosition > 0) nowPosition else previousSeekTo
                                 }
                             } else {
-                                val bumperFolder = getBumperDirectory(currentPlaylist!!.isUsingExternalStorage)
-                                val generalBumpersIntro = mutableListOf<MediaItem>()
-                                val generalBumpersOutro = mutableListOf<MediaItem>()
-                                val specialBumpersIntro = mutableListOf<MediaItem>()
-                                val specialBumpersOutro = mutableListOf<MediaItem>()
-                                val playListIntroBumpers = mutableListOf<MediaItem>()
-                                val playListOutroBumpers = mutableListOf<MediaItem>()
-                                // Prepare intro general bumpers
-                                if (currentPlaylist!!.isPlayingGeneralBumpers) {
-                                    addBumpers(generalBumpersIntro, File("$bumperFolder${File.separator}General-INTRO"), false)
-                                    addBumpers(generalBumpersOutro, File("$bumperFolder${File.separator}General-OUTRO"), false)
-                                }
-                                val specialBumperFolder = currentPlaylist!!.specialBumperFolder
-                                if (!specialBumperFolder.isNullOrBlank()) {
-                                    addBumpers(specialBumpersIntro, File("$bumperFolder${File.separator}$specialBumperFolder-INTRO"), false)
-                                    addBumpers(specialBumpersOutro, File("$bumperFolder${File.separator}$specialBumperFolder-OUTRO"), false)
-                                }
-
-                                // Prepare playlist specific bumpers
-                                addBumpers(playListIntroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split(Utils.COMMA_SPLITTER)
-                                    ?.get(0)}-INTRO"), false)
-                                addBumpers(playListOutroBumpers, File("$bumperFolder${File.separator}${currentPlaylist!!.urlOrFolder?.split(Utils.COMMA_SPLITTER)
-                                    ?.get(0)}-OUTRO"), false)
-
-                                // Add intro bumpers
-                                val currentBumpers = mutableListOf<MediaItem>().apply {
-                                    addAll(generalBumpersIntro)
-                                    addAll(playListIntroBumpers)
-                                    addAll(specialBumpersIntro)
-                                }
-
-                                programItems.addAll(0, currentBumpers)
-
-                                // Add outro bumpers
-                                val allOutroBumpers = mutableListOf<MediaItem>().apply {
-                                    addAll(specialBumpersOutro)
-                                    addAll(playListOutroBumpers)
-                                    addAll(generalBumpersOutro)
-                                }
+                                val (introBumpers, allOutroBumpers) = bumpersFor(currentPlaylist!!)
+                                programItems.addAll(0, introBumpers)
 
                                 // Look ahead to see what time the very next scheduled playlist is set to start today
                                 val nextScheduledTime = getNextScheduledTime(currentPlaylist!!)
@@ -1182,6 +1169,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             items = maintenance?.retrievePrograms(next).orEmpty()
         }
         if (items.isEmpty()) return // nothing to queue: STATE_ENDED handles it (slate)
+        if (next.type != Playlist.Type.ONLINE && !next.isResuming()) { // same bumpers as a normal switch would play
+            val (intros, outros) = bumpersFor(next)
+            items = intros + items + outros
+        }
         upcomingProgramItems = items.map { it.buildUpon().setTag(nextIndex).build() }.toMutableList()
         player?.addMediaItems(upcomingProgramItems!!)
         Logger.log(AuditLog.Event.PLAYLIST_PRE_APPENDED, getPlayingAtIndexLabel(nextIndex))
