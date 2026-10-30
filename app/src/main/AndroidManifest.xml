@@ -66,6 +66,13 @@
             </intent-filter>
         </receiver>
 
+        <receiver android:name=".listen.DriveMounted" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_MOUNTED" />
+                <data android:scheme="file" />
+            </intent-filter>
+        </receiver>
+
         <receiver android:name=".listen.DateChange" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />

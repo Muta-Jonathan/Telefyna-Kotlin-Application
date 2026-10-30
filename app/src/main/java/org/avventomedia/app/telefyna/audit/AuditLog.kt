@@ -70,6 +70,8 @@ class AuditLog {
         PLAYOUT_REATTACHED("New screen reattached to playout still airing playlist: %s"),
         SLOT_PREROLL("Preparing slot: %s, starting in %d ms"),
         FIRST_FRAME("First picture %d ms after switching to playlist: %s"),
+        DRIVE_IMPORT("Imported %d files (%s) from %s; %d unchanged, %d failed"),
+        DRIVE_IMPORT_SKIPPED("Drive %s not imported: %s"),
 
 
         // system
