@@ -107,7 +107,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `notificationsDisabled` | Hide the playback notification |
 | `alerts` | Email alerts: `mailer` (SMTP) and `subscribers` (emails, event category, attachments) |
 | `playlists[]` | The playlists; see below |
-| `schedules[]` | Time slots that reuse a playlist (`playlistId`) with their own `start`, `days`, `dates`, `graphics`, … |
+| `schedules[]` | Time slots that reuse a playlist (`playlistId`) with their own `start`, `days`, `dates`, `graphics`, … When two slots start at the same time, one booked for **today's date** (a special event) always wins over a weekly/daily one; otherwise the one later in the list wins |
 
 **Playlists.** The **first** playlist is the default: it plays whenever nothing else is scheduled. The **second** is the filler/offline fallback: it plays when an online stream fails or a finite playlist finishes early. Keep both active.
 
@@ -278,7 +278,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [x] Auto-installation of config under resources if non-existent at first run.
 - [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
 - [x] Enhance resuming playlists (`LOCAL_RESUMING*`) to track the actual filename (`mediaId`) instead of just the index, preventing playlist resets or skipped episodes when files are added or removed from the folder.
-- [ ] Test if dates down the playlist overwrite the schedule.
+- [x] Test if dates down the playlist overwrite the schedule.
 - [x] Test playlist modification, etc.
 - [x] Handle current play at switch not buffering video.
 - [x] Log every keypress.
