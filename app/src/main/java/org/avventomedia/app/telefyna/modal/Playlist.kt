@@ -45,7 +45,9 @@ data class Playlist(
     // Index of playlist to replace with when empty
     var emptyReplacer: Int? = null,
     var seekTo: Seek = Seek(0, 0),
-    var repeat: Repeat? = null
+    var repeat: Repeat? = null,
+    // Randomized playlists: air long programmes first and short clips last (fills the end of a slot with shorts)
+    var intelligentSort: Boolean = false
 ) {
 
     val isPlayingGeneralBumpers: Boolean

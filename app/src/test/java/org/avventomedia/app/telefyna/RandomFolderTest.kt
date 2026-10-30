@@ -60,4 +60,11 @@ class RandomFolderTest {
         val counts = (0 until 200).groupingBy { Utils.pickFolder(folders, null, Random(it))!!.name }.eachCount()
         assertTrue(counts.keys == setOf("Series A", "Series B") && counts.values.all { it > 50 })
     }
+
+    @Test
+    fun intelligentSortAirsLongProgrammesBeforeShortClipsKeepingTheShuffle() {
+        val durations = mapOf("promo" to 30_000L, "sermon" to 3_600_000L, "jingle" to 10_000L, "film" to 5_400_000L, "clip" to 59_999L)
+        val shuffled = listOf("promo", "sermon", "jingle", "film", "clip")
+        assertEquals(listOf("sermon", "film", "promo", "jingle", "clip"), Utils.longFirst(shuffled) { durations.getValue(it) })
+    }
 }

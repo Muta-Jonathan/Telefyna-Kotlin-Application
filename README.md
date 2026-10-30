@@ -121,6 +121,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `usingExternalStorage` | Read from USB / SD instead of internal storage |
 | `playingGeneralBumpers`, `specialBumperFolder` | Bumper selection (non-resuming local playlists) |
 | `emptyReplacer` | Index of the playlist to play if this one is empty |
+| `intelligentSort` | Randomized playlists: air programmes of a minute or longer first and short clips last, so the end of a slot fills with shorts (default `false`) |
 | `repeat` | For resuming playlists: `DAILY`, `WEEKLY`, `MONTHLY`, `QUARTERLY`, `ANNUALLY` |
 | `graphics` | `displayLogo`, `logoPosition` (`TOP`/`BOTTOM`), `displayLiveLogo`, `displayRepeatWatermark`, `news` (`messages` separated by `~~`, `startMinute`, `showTime`), `lowerThirds[]` (`file`, `starts` in minutes, `replays`) |
 
@@ -163,6 +164,7 @@ Resume points follow the **file**, not its position in the folder. Adding, renam
 - **Resume points** of resuming playlists are saved every 15 s, so after a power cut or crash they continue close to where they stopped.
 - **Foreground service** keeps the process at high priority.
 - **Survives display changes:** HDMI re-handshakes, TV power cycles and Bluetooth remotes no longer restart playout.
+- **Gapless handovers:** when a programme playlist reaches its last item, the fillers are queued behind it, so playback rolls straight on with no stop, reload or audio fade.
 - **Error recovery:** bad or corrupt items are skipped, live streams rejoin the live edge after `BehindLiveWindow`, and network errors fall back to fillers and retry.
 - **Bad config uploads** are rejected and the last known good configuration keeps airing.
 - **Never a black screen:** when nothing can play (no config, empty playlists), a "We'll be right back" slate is shown (your own `slate.png` if present) and clears by itself once content is back.

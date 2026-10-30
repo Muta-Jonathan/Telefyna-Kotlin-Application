@@ -112,4 +112,21 @@ class AuditReportTest {
         val errors = AuditReport.build(entries, week, now = t("26-10-2026 12:00:00")).topErrors
         assertEquals(listOf(ErrorStat("ERROR_CODE_IO_NETWORK_CONNECTION_FAILED: androidx.media3.datasource.HttpDataSource failed after # tries", 2)), errors)
     }
+
+    @Test
+    fun switchTimesAreSummarised() {
+        val entries = AuditParser.parse(log(
+            "26-10-2026 10:00:00" to "FIRST_FRAME|First picture 420 ms after switching to playlist: Sermon #0",
+            "26-10-2026 11:00:00" to "FIRST_FRAME|First picture 1800 ms after switching to playlist: Fillers #1",
+            "26-10-2026 12:00:00" to "FIRST_FRAME|First picture 300 ms after switching to playlist: Sermon #0"
+        ))
+        val r = AuditReport.build(entries, week, now = t("26-10-2026 13:00:00"))
+        assertEquals(3, r.switchesMeasured)
+        assertEquals(840L, r.averageSwitchMs)
+        assertEquals(1800L, r.slowestSwitchMs)
+        val year = AuditReport.combine(ReportPeriod.containing(ReportPeriod.Kind.YEARLY, week.start), listOf(r, r.copy(switchesMeasured = 1, averageSwitchMs = 200, slowestSwitchMs = 200)))
+        assertEquals(4, year.switchesMeasured)
+        assertEquals((840L * 3 + 200) / 4, year.averageSwitchMs)
+        assertEquals(1800L, year.slowestSwitchMs)
+    }
 }
