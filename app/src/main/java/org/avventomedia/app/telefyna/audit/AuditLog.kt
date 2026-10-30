@@ -20,6 +20,7 @@ class AuditLog {
         ERROR("%s"),
         CACHE_NOW_PLAYING_RESUME("Playlist: %s will next be resuming after program: %s at: %s"),
         RETRIEVE_NOW_PLAYING_RESUME("Resuming Playlist: %s program: %s at: %d"),
+        RESUME_REMAPPED("Playlist: %s folder changed; resume point moved from position %d to %d (%s)"),
         STUCK("Relaunching having been stuck for %d seconds"),
         EMPTY_FILLERS("There are no fillers installed"),
         CRASH("Relaunched Telefyna after crash because of: %s"),
@@ -72,7 +73,7 @@ class AuditLog {
         fun getCategory(): Category {
             val admins = arrayOf(
                 HEARTBEAT, KEY_PRESS, CONFIGURATION, CONFIG_INSTALLED, MAINTENANCE, MAINTENANCE_CLEANUP,
-                METRICS, ERROR, CACHE_NOW_PLAYING_RESUME, RETRIEVE_NOW_PLAYING_RESUME,
+                METRICS, ERROR, CACHE_NOW_PLAYING_RESUME, RETRIEVE_NOW_PLAYING_RESUME, RESUME_REMAPPED,
                 STUCK, INTERNET_RESTORED, EMPTY_FILLERS, CRASH, BACK_UP,
                 RESTARTING, TIME_CHANGED, SLATE_ON, SLATE_OFF, SAFE_MODE, SAFE_MODE_OFF
             )

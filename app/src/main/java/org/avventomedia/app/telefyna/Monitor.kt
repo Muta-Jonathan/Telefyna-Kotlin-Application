@@ -93,6 +93,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         private const val PLAYLIST_LAST_MODIFIED = "PLAYLIST_LAST_MODIFIED"
         private const val PLAYLIST_LAST_PLAYED = "PLAYLIST_LAST_PLAYED"
         private const val PLAYLIST_SEEK_TO = "PLAYLIST_SEEK_TO"
+        private const val PLAYLIST_MEDIA_ID = "PLAYLIST_MEDIA_ID"
         private const val PLAYLIST_PLAY_FORMAT = "%s-%d"
         private const val REQUEST_CODE_PERMISSIONS = 123
         private const val PERMISSION_REQUEST_CODE = 100
@@ -237,6 +238,17 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (programName.isNotBlank()) { // exclude bumpers
             val editor = sharedPreferences.edit()
             editor.putInt(getPlaylistPlayKey(index), atValue)
+            // Remember which file that position is, so resuming survives files being added or removed
+            val resumeFile = if (Playlist.Type.LOCAL_RESUMING_ONE == currentPlaylist?.type && startOnePlayProgramItem != null) {
+                programItems.getOrNull(at)?.mediaId
+            } else {
+                programItems.getOrNull(atValue)?.mediaId
+            }
+            if (resumeFile != null) {
+                editor.putString(getPlaylistMediaIdKey(index), resumeFile)
+            } else {
+                editor.remove(getPlaylistMediaIdKey(index))
+            }
             editor.putLong(getPlaylistSeekTo(index), seekTo)
             editor.putLong(getPlaylistLastModified(index), getLastModifiedFor(index))
             editor.putString(getPlaylistLastPlayed(index),
@@ -247,6 +259,15 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 Logger.log(AuditLog.Event.CACHE_NOW_PLAYING_RESUME, getPlayingAtIndexLabel(index), programName, "$at-$seekTo")
             }
         }
+    }
+
+    private fun getSharedPlaylistMediaId(index: Int): String? {
+        return sharedPreferences.getString(getPlaylistMediaIdKey(index), null)
+    }
+
+    @SuppressLint("DefaultLocale")
+    private fun getPlaylistMediaIdKey(index: Int): String {
+        return String.format(PLAYLIST_PLAY_FORMAT, PLAYLIST_MEDIA_ID, index)
     }
 
     private fun getSharedPlaylistMediaItem(index: Int): Int {
@@ -717,8 +738,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
 
                         // Reset tracking now playing if the playlist programs were modified
+                        // (only for resume points saved before file identities were stored; those are found by file now)
                         val modifiedOffset = playlistModified(nowPlayingIndex!!)
-                        if (modifiedOffset > 0) {
+                        if (modifiedOffset > 0 && getSharedPlaylistMediaId(getPlaylistIndex(nowPlayingIndex!!)) == null) {
                             Logger.log(AuditLog.Event.PLAYLIST_MODIFIED, getPlayingAtIndexLabel(nowPlayingIndex), modifiedOffset / 1000)
                             resetTrackingNowPlaying(nowPlayingIndex!!)
                         }
@@ -730,8 +752,19 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         if (currentPlaylist!!.type != Playlist.Type.ONLINE) {
                             // Resume local resumable programs
                             if (currentPlaylist!!.isResuming()) {
-                                val previousProgram = getSharedPlaylistMediaItem(getPlaylistIndex(nowPlayingIndex!!))
-                                var previousSeekTo = getSharedPlaylistSeekTo(getPlaylistIndex(nowPlayingIndex!!))
+                                val resumeIndex = getPlaylistIndex(nowPlayingIndex!!)
+                                val storedProgram = getSharedPlaylistMediaItem(resumeIndex)
+                                val willAdvance = nowProgramItem == 0 &&
+                                        (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE) &&
+                                        currentPlaylist!!.repeat?.let { canResume(nowPlayingIndex!!, it) } == true
+                                val (previousProgram, sameFile) = ResumeResolver.resolve(
+                                    storedProgram, getSharedPlaylistMediaId(resumeIndex), programItems.map { it.mediaId }, willAdvance
+                                )
+                                if (previousProgram != storedProgram || !sameFile) {
+                                    Logger.log(AuditLog.Event.RESUME_REMAPPED, getPlayingAtIndexLabel(nowPlayingIndex), storedProgram, previousProgram,
+                                        if (sameFile) "same file" else "file removed, continuing with the next one")
+                                }
+                                var previousSeekTo = if (sameFile) getSharedPlaylistSeekTo(resumeIndex) else 0L
                                 if (nowProgramItem == 0 && (currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_NEXT || currentPlaylist!!.type == Playlist.Type.LOCAL_RESUMING_ONE)) {
                                     if (previousProgram == -1 || previousProgram == (programItems.size).minus(1)) {
                                         nowProgramItem = 0

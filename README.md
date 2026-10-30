@@ -129,6 +129,8 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 - `_NEXT` moves on to the next programme.
 - `_ONE` plays a single programme per slot, advancing each time.
 
+Resume points follow the **file**, not its position in the folder. Adding, renaming the order of, or removing *other* files doesn't reset a series or shift it to the wrong episode. If the remembered file itself is removed, playback continues with the file now in its place.
+
 ---
 
 ## Remote management
@@ -241,7 +243,7 @@ The target architecture (a schedule engine and player service separated from the
 - [x] **Cleartext HTTP Streams Blocked:** Cleartext allowed for operator-configured http:// streams (P1-3, #127).
 - [x] **Stale Graphics After Switch:** Pending ticker and lower-third jobs are cancelled on playlist switch (P1-5, #130).
 - [x] **Programs Spanning Midnight Cut Off:** Midnight maintenance lets a running scheduled slot finish; start times compared numerically (P1-6, #131).
-- [ ] **Periodic Resume Position Saving:** Persist resume point every few seconds and by file identity, not index (P1-7). Periodic saving merged (#139); resuming by file identity still open.
+- [x] **Periodic Resume Position Saving:** Resume point saved every 15 s (#139) and tracked by file identity, so adding or removing files no longer resets or shifts a series (P1-7).
 - [x] **Loudness Normalisation:** Real-time loudness levelling (AGC + limiter) between programmes, bumpers and streams, opt-in via `loudnessLeveling` (P1-8, #142). Pre-measured per-file EBU R128 loudness remains a possible refinement.
 - [x] **Lock Out Remote Media Keys:** Verified not needed: remote media keys don't reach the player (P1-11).
 - [x] **Unexport Internal Receivers:** `PlaylistScheduler` no longer exported (P2-1, #132).
@@ -275,10 +277,10 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 ### Backlog
 - [x] Auto-installation of config under resources if non-existent at first run.
 - [ ] Create a `LOCAL_RANDOMIZED` special mode which loads folders and plays one at a time.
-- [ ] Enhance resuming playlists (`LOCAL_RESUMING*`) to track the actual filename (`mediaId`) instead of just the index, preventing playlist resets or skipped episodes when files are added or removed from the folder.
+- [x] Enhance resuming playlists (`LOCAL_RESUMING*`) to track the actual filename (`mediaId`) instead of just the index, preventing playlist resets or skipped episodes when files are added or removed from the folder.
 - [ ] Test if dates down the playlist overwrite the schedule.
-- [ ] Test playlist modification, etc.
-- [ ] Handle current play at switch not buffering video.
+- [x] Test playlist modification, etc.
+- [x] Handle current play at switch not buffering video.
 - [x] Log every keypress.
 - [ ] Fix Swift bug: don't override, just replace manually.
 - [ ] Investigate bumpers missing when loaded from scheduler.
