@@ -100,7 +100,7 @@ object Utils {
                 }
             }
 
-            if (Playlist.Type.LOCAL_RANDOMIZED == playlist.type) {
+            if (playlist.isRandomized()) {
                 // Shuffle the playlist using the default random seed to ensure better randomness
                 // and reduce repeat patterns
                 programs.shuffle()

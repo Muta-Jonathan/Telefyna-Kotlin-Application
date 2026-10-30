@@ -113,16 +113,19 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 
 | Playlist field | Meaning |
 |---|---|
-| `type` | `ONLINE`, `LOCAL_SEQUENCED`, `LOCAL_RANDOMIZED`, `LOCAL_RESUMING`, `LOCAL_RESUMING_SAME`, `LOCAL_RESUMING_NEXT`, `LOCAL_RESUMING_ONE` |
+| `type` | `ONLINE`, `LOCAL_SEQUENCED`, `LOCAL_RANDOMIZED`, `LOCAL_RANDOMIZED_ONE`, `LOCAL_RESUMING`, `LOCAL_RESUMING_SAME`, `LOCAL_RESUMING_NEXT`, `LOCAL_RESUMING_ONE` |
 | `urlOrFolder` | Stream URL, or folder name(s) under `playlist/` (comma-separated) |
 | `start` | Slot start time, `HH:mm` |
 | `days` / `dates` | Weekdays `1-7` (Sun–Sat) and/or dates `dd-MM-yyyy`; neither = daily |
 | `usingExternalStorage` | Read from USB / SD instead of internal storage |
 | `playingGeneralBumpers`, `specialBumperFolder` | Bumper selection (non-resuming local playlists) |
 | `emptyReplacer` | Index of the playlist to play if this one is empty |
-| `oneFolderAtATime` | `LOCAL_RANDOMIZED` only: each play picks **one random sub-folder** (e.g. one series) and airs it in order, never the same one twice in a row when there is a choice. Default `false` shuffles all files together |
 | `repeat` | For resuming playlists: `DAILY`, `WEEKLY`, `MONTHLY`, `QUARTERLY`, `ANNUALLY` |
 | `graphics` | `displayLogo`, `logoPosition` (`TOP`/`BOTTOM`), `displayLiveLogo`, `displayRepeatWatermark`, `news` (`messages` separated by `~~`, `startMinute`, `showTime`), `lowerThirds[]` (`file`, `starts` in minutes, `replays`) |
+
+**Random modes:**
+- `LOCAL_RANDOMIZED` shuffles all files, from all sub-folders, together.
+- `LOCAL_RANDOMIZED_ONE` picks **one random sub-folder** (e.g. one series) each time it plays and airs it in order. It never picks the same one twice in a row when there's a choice, and falls back to a full shuffle if there are no sub-folders.
 
 **Resuming modes:**
 - `LOCAL_RESUMING` resumes at the exact position.

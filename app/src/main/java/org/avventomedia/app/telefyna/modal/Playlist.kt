@@ -45,10 +45,7 @@ data class Playlist(
     // Index of playlist to replace with when empty
     var emptyReplacer: Int? = null,
     var seekTo: Seek = Seek(0, 0),
-    var repeat: Repeat? = null,
-    // LOCAL_RANDOMIZED only: pick one random sub-folder (e.g. one series) per play and air it in order,
-    // instead of shuffling the files of every sub-folder together
-    var oneFolderAtATime: Boolean = false
+    var repeat: Repeat? = null
 ) {
 
     val isPlayingGeneralBumpers: Boolean
@@ -135,6 +132,15 @@ data class Playlist(
         return this
     }
 
+    fun isRandomized(): Boolean {
+        return type == Type.LOCAL_RANDOMIZED || type == Type.LOCAL_RANDOMIZED_ONE
+    }
+
+    /** Local playlists that end (and hand over to fillers) once their files have played. */
+    fun isFiniteLocal(): Boolean {
+        return type == Type.LOCAL_SEQUENCED || isRandomized() || isResuming()
+    }
+
     // if playlist is resuming, no bumpers play; next plays next program, same plays the former uncompleted else exact time is resumed
     fun isResuming(): Boolean {
         return type.name.startsWith(Type.LOCAL_RESUMING.name)
@@ -144,6 +150,7 @@ data class Playlist(
         ONLINE, // An Online streaming playlist using a stream URL
         LOCAL_SEQUENCED, // A local playlist starting from the first to the last alphabetical program by file naming
         LOCAL_RANDOMIZED, // A local playlist randomly selecting programs
+        LOCAL_RANDOMIZED_ONE, // A local playlist picking one random sub-folder (e.g. a series) per play, aired in order
         LOCAL_RESUMING, // A local playlist resuming from the previous program at exact stopped time
         LOCAL_RESUMING_SAME, // A local playlist restarting the previous non-completed program on the next playout
         LOCAL_RESUMING_NEXT, // A local playlist resuming from the next program

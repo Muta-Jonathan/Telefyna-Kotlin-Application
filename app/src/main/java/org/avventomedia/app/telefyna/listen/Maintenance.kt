@@ -180,7 +180,7 @@ class Maintenance {
             if (it.type == Playlist.Type.ONLINE) {
                 // HLS, DASH, RTSP, RTMP and SRT are all resolved by the player's SchemeRoutingDataSource
                 it.urlOrFolder?.trim()?.let { url -> programs.add(MediaItem.fromUri(url)) }
-            } else if (it.type == Playlist.Type.LOCAL_RANDOMIZED && it.oneFolderAtATime && retrieveOneRandomFolder(it, programs)) {
+            } else if (it.type == Playlist.Type.LOCAL_RANDOMIZED_ONE && retrieveOneRandomFolder(it, programs)) {
                 // one random sub-folder, in order
             } else {
                 it.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.forEachIndexed { i, _ ->
@@ -200,7 +200,7 @@ class Maintenance {
     }
 
     /**
-     * LOCAL_RANDOMIZED + oneFolderAtATime: picks one random sub-folder (not the same as last time when there is a
+     * LOCAL_RANDOMIZED_ONE: picks one random sub-folder (not the same as last time when there is a
      * choice) and adds its files in alphabetical order. Returns false when there are no sub-folders with media,
      * so the caller falls back to shuffling all files.
      */
