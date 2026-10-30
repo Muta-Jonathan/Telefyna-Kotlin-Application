@@ -87,6 +87,17 @@ class Mail(private val auditAlert: AuditAlert) {
     @OptIn(UnstableApi::class)
     @Throws(MessagingException::class)
     fun setEmailBody(receivers: Receivers, draft: Draft) {
+        if (AuditLog.Event.REPORT_GENERATED == auditAlert.event && receivers.attachReports) {
+            // the event message ends with the report's path in brackets
+            val report = Regex("\\(([^()]+\\.pdf)\\)").find(auditAlert.message)?.groupValues?.get(1)?.let { File(it) }
+            if (report != null && report.exists()) {
+                emailMessage.setContent(MimeMultipart().apply {
+                    addBodyPart(MimeBodyPart().apply { setContent(draft.body, "text/html") })
+                    addBodyPart(attach(report.absolutePath, draft))
+                })
+                return
+            }
+        }
         val wantsAttachments = receivers.isAttachConfig || receivers.attachAuditLog > 0
         if (!wantsAttachments || AuditLog.Event.MAINTENANCE != auditAlert.event) {
             emailMessage.setContent(draft.body, "text/html") // for a html email

@@ -23,3 +23,10 @@
 -dontwarn java.awt.datatransfer.DataFlavor
 -dontwarn java.awt.datatransfer.Transferable
 -keep class org.avventomedia.app.telefyna.modal.* {*;}
+# Report summaries are stored as JSON between app versions: keep their field names stable
+-keep class org.avventomedia.app.telefyna.audit.ReportData { *; }
+-keep class org.avventomedia.app.telefyna.audit.ReportPeriod { *; }
+-keep class org.avventomedia.app.telefyna.audit.ProgrammeStat { *; }
+-keep class org.avventomedia.app.telefyna.audit.Bucket { *; }
+-keep class org.avventomedia.app.telefyna.audit.ErrorStat { *; }
+-keep enum org.avventomedia.app.telefyna.audit.ReportPeriod$Kind { *; }

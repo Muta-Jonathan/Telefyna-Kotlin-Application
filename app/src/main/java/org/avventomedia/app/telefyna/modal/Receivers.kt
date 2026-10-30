@@ -10,6 +10,9 @@ data class Receivers(
     // days whose audit logs should be added backwards starting today
     var attachAuditLog: Int = 0,
 
+    // attach broadcast reports (PDF) when they are generated
+    var attachReports: Boolean = false,
+
     var eventCategory: AuditLog.Event.Category
 ) {
     val isAttachConfig: Boolean

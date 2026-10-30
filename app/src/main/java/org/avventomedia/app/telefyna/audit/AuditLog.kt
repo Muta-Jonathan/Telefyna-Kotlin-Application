@@ -12,6 +12,7 @@ class AuditLog {
         HEARTBEAT("TELEFYNA has been turned: %s"),
         KEY_PRESS("%s has been pressed"),
         CONFIGURATION("Initialized configurations"),
+        REPORT_GENERATED("Broadcast report ready: %s (%s)"),
         CONFIG_INSTALLED("No configuration found: installed the default configuration and folders in %s. Add videos to playlist/default and playlist/fillers"),
         MAINTENANCE("Ran maintenance"),
         MAINTENANCE_CLEANUP("Deleted %d audit logs older than %d days"),
@@ -74,7 +75,7 @@ class AuditLog {
 
         fun getCategory(): Category {
             val admins = arrayOf(
-                HEARTBEAT, KEY_PRESS, CONFIGURATION, CONFIG_INSTALLED, MAINTENANCE, MAINTENANCE_CLEANUP,
+                HEARTBEAT, KEY_PRESS, CONFIGURATION, CONFIG_INSTALLED, REPORT_GENERATED, MAINTENANCE, MAINTENANCE_CLEANUP,
                 METRICS, ERROR, CACHE_NOW_PLAYING_RESUME, RETRIEVE_NOW_PLAYING_RESUME, RESUME_REMAPPED,
                 STUCK, INTERNET_RESTORED, EMPTY_FILLERS, CRASH, BACK_UP,
                 RESTARTING, TIME_CHANGED, SLATE_ON, SLATE_OFF, SAFE_MODE, SAFE_MODE_OFF
