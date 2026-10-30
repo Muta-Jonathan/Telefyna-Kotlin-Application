@@ -104,6 +104,13 @@ object Utils {
                 // Shuffle the playlist using the default random seed to ensure better randomness
                 // and reduce repeat patterns
                 programs.shuffle()
+                val monitor = Monitor.instance
+                if (playlist.intelligentSort && monitor != null) {
+                    val sorted = longFirst(programs) { item ->
+                        DurationCacheManager.getDuration(monitor, File(Uri.parse(item.mediaId).path ?: ""))
+                    }
+                    programs.clear(); programs.addAll(sorted)
+                }
             }
         }
     }
@@ -121,6 +128,15 @@ object Utils {
         } else {
             alarmManager.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerAtMillis, operation)
         }
+    }
+
+    /**
+     * Keeps the shuffled order within each group but airs programmes of at least [thresholdMs] before short clips,
+     * so the end of a slot is filled with shorts rather than cutting a long programme.
+     */
+    fun <T> longFirst(items: List<T>, thresholdMs: Long = 60_000L, durationOf: (T) -> Long): List<T> {
+        val (long, short) = items.partition { durationOf(it) >= thresholdMs }
+        return long + short
     }
 
     /** Immediate sub-folders of [roots] that contain at least one playable file (at any depth), by name. */

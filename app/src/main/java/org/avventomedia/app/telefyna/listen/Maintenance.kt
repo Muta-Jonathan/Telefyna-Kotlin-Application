@@ -65,6 +65,14 @@ class Maintenance {
             // Metrics do network calls; keep them off the main thread and out of the scheduling path
             Thread {
                 Logger.log(AuditLog.Event.METRICS, Metrics.retrieve())
+                // Measure new/changed media once, in the background, for slot joins and intelligent sorting
+                Monitor.instance?.let { monitor ->
+                    monitor.configuration?.playlists?.filter { it.type != Playlist.Type.ONLINE }?.forEach { playlist ->
+                        playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.indices?.forEach { i ->
+                            org.avventomedia.app.telefyna.DurationCacheManager.indexDirectory(monitor, monitor.getDirectoryFromPlaylist(playlist, i))
+                        }
+                    }
+                }
                 // Reports for the week/month/year that just ended, built before old logs are pruned
                 Monitor.instance?.generateReports(org.avventomedia.app.telefyna.audit.ReportPeriod.endedBy(System.currentTimeMillis()), toDate = false)
                 // Old daily logs are pruned off the main thread too

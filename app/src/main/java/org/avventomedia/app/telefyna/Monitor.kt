@@ -109,7 +109,6 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         // Define a reusable Gson instance outside the function to avoid repeated creation
         private val gson = GsonBuilder().setPrettyPrinting().create()
         private val possibleExtensions = listOf("webp", "png", "jpg", "gif")
-        private val durationCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Long>>()
         private const val RESUME_SAVE_INTERVAL = 15_000L
         private const val RETRY_PREPARE_DELAY = 5000L
         // PlaybackException.ERROR_CODE_IO_* (2000-2999)
@@ -173,6 +172,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private var currentPlaylist: Playlist? = null
     private var playlistByIndex: MutableList<Playlist> = mutableListOf()
     private var programItems: MutableList<MediaItem> = mutableListOf()
+    // Next playlist queued behind the last item for a gapless handover
+    private var upcomingProgramItems: MutableList<MediaItem>? = null
     private lateinit var tickerRecyclerView: RecyclerView
     private lateinit var tickerAdapter: TickerAdapter
     private var lowerThirdView: VideoView? = null
@@ -902,8 +903,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                         // into ExoPlayer's playlist queue while the main program is already playing.
                                         lifecycleScope.launch(Dispatchers.Main) {
                                             if (player != null && currentPlaylist == capturedPlaylist) {
-                                                programItems.addAll(fittingOutroBumpers)
-                                                player!!.addMediaItems(fittingOutroBumpers)
+                                                // Right after this playlist's own items: the next playlist may already be
+                                                // queued behind them, and bumpers must stay part of (and tagged as) this playlist
+                                                val bumpers = fittingOutroBumpers.map { b -> b.buildUpon().setTag(index).build() }
+                                                val insertAt = programItems.size
+                                                programItems.addAll(bumpers)
+                                                player!!.addMediaItems(insertAt, bumpers)
                                             }
                                         }
                                     }
@@ -928,6 +933,9 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
 
                         val playerView = getPlayerView(true)
                         playerView.player?.removeListener(this) // Remove old listener
+                        // Tag every item with its playlist index so a gapless handover can be recognised
+                        programItems = programItems.map { it.buildUpon().setTag(index).build() }.toMutableList()
+                        upcomingProgramItems = null
                         // Load the new media items
                         programItems.let { player!!.setMediaItems(it) }
                         nowProgramItem?.let { player!!.seekTo(it, nowPosition) }
@@ -959,6 +967,11 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         // Log now playing
                         cacheNowPlaying(false)
                         triggerGraphics(nowPosition)
+                        // The listener is attached after setMediaItems, so the first transition isn't seen: queue the
+                        // next playlist now when starting on the last item (e.g. single-item playlists)
+                        if (currentPlaylist!!.isFiniteLocal() && nowProgramItem == programItems.size - 1) {
+                            queueNextPlaylist()
+                        }
             }
         } else {
             // Already playing this playlist. Just update reference to apply any graphics/config changes
@@ -988,40 +1001,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     // Retrieve video duration in milliseconds safely without creating MediaPlayer decoder instances
+    // Duration of a media item (by mediaId) from the persistent index; ids are URIs, so decode (e.g. %20 for spaces)
     private fun getDuration(path: String): Long {
-        val cleanPath = path.replace("file://", "")
-        val file = File(cleanPath)
-        if (!file.exists()) return 0L
-        val lastModified = file.lastModified()
-
-        durationCache[cleanPath]?.let { (cachedTime, cachedDuration) ->
-            if (cachedTime == lastModified) {
-                return cachedDuration
-            }
-        }
-
-        var duration = 0L
-        val retriever = android.media.MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(cleanPath)
-            val timeStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-            if (timeStr != null) {
-                duration = timeStr.toLong()
-            }
-        } catch (e: Exception) {
-            Logger.log(AuditLog.Event.ERROR, "Error reading duration for $cleanPath: ${e.message}")
-        } finally {
-            try {
-                retriever.release()
-            } catch (e: Exception) {
-                // ignore
-            }
-        }
-
-        if (duration > 0) {
-            durationCache[cleanPath] = Pair(lastModified, duration)
-        }
-        return duration
+        val file = File(android.net.Uri.parse(path).path ?: path.removePrefix("file://"))
+        return DurationCacheManager.getDuration(this, file)
     }
 
     /**
@@ -1084,8 +1067,8 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     val isFiniteType = playlist.isFiniteLocal()
                     val isAtLastItem = player?.currentMediaItemIndex == (programItems.size - 1)
 
-                    // Only switch to fillers when a truly finite playlist finishes
-                    if (isFiniteType && isAtLastItem) {
+                    // Only switch to fillers when a truly finite playlist finishes and nothing was queued gaplessly
+                    if (isFiniteType && isAtLastItem && player?.hasNextMediaItem() != true) {
                         val lastItemName = player?.currentMediaItemIndex?.let { programItems.getOrNull(it) }?.let { getMediaItemName(it) } ?: "Unknown"
                         Logger.log(AuditLog.Event.PLAYLIST_EXHAUSTED, getPlayingAtIndexLabel(nowPlayingIndex), lastItemName)
                         switchNow(getSecondDefaultIndex(), false, this)
@@ -1112,27 +1095,52 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
+    /**
+     * Gapless handover: queue the fillers (or the first default when the fillers can't play) behind the last item,
+     * so the player rolls straight into them instead of stopping, reloading and fading in.
+     */
+    private fun queueNextPlaylist() {
+        if (upcomingProgramItems != null || (player?.mediaItemCount ?: 0) > programItems.size) return
+        var nextIndex = getSecondDefaultIndex()
+        var next = playlistByIndex.getOrNull(nextIndex) ?: return
+        var items = if (next.type == Playlist.Type.ONLINE && !Utils.internetConnected()) emptyList() else maintenance?.retrievePrograms(next).orEmpty()
+        if (items.isEmpty()) {
+            nextIndex = getFirstDefaultIndex()
+            next = playlistByIndex.getOrNull(nextIndex) ?: return
+            items = maintenance?.retrievePrograms(next).orEmpty()
+        }
+        if (items.isEmpty()) return // nothing to queue: STATE_ENDED handles it (slate)
+        upcomingProgramItems = items.map { it.buildUpon().setTag(nextIndex).build() }.toMutableList()
+        player?.addMediaItems(upcomingProgramItems!!)
+        Logger.log(AuditLog.Event.PLAYLIST_PRE_APPENDED, getPlayingAtIndexLabel(nextIndex))
+    }
+
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         nowPlayingIndex?.let {
-            val isFiniteType = currentPlaylist?.isFiniteLocal() == true
-
-            // ✅ We are *about to* play the final item — don't switch yet
-            val aboutToPlayLast = nowProgramItem != null && nowProgramItem!! == programItems.size - 1
-            val playlistName =  getNowPlayingPlaylistLabel()
-
-            if (isFiniteType && aboutToPlayLast) {
-                Logger.log(
-                    AuditLog.Event.PLAYLIST_LAST_ITEM,
-                    "$playlistName — waiting for STATE_ENDED to switch"
-                )
+            val itemPlaylistIndex = mediaItem?.localConfiguration?.tag as? Int
+            // Rolled over into the queued playlist? A playlist that queues itself (fillers after fillers) keeps the
+            // same tag, so playing past our own items also counts as a handover
+            val pastOwnItems = (player?.currentMediaItemIndex ?: 0) >= programItems.size
+            if (itemPlaylistIndex != null && (itemPlaylistIndex != it || pastOwnItems) && itemPlaylistIndex < playlistByIndex.size) {
+                val previous = getNowPlayingPlaylistLabel()
+                nowPlayingIndex = itemPlaylistIndex
+                currentPlaylist = playlistByIndex[itemPlaylistIndex]
+                programItems = upcomingProgramItems ?: maintenance?.retrievePrograms(currentPlaylist).orEmpty()
+                    .map { item -> item.buildUpon().setTag(itemPlaylistIndex).build() }.toMutableList()
+                upcomingProgramItems = null
+                val current = player?.currentMediaItemIndex ?: 0
+                if (current > 0) player?.removeMediaItems(0, current)
+                Logger.log(AuditLog.Event.PLAYLIST_GAPLESS, previous, getNowPlayingPlaylistLabel())
+                triggerGraphics(0L) // the new playlist's logo/ticker, and cancel the old one's pending graphics
             }
 
-            // ✅ Only switch after final item has fully played — in STATE_ENDED (not here!)
-            // So DO NOT switch here — only log
-
-            // ✅ Now safely increment AFTER the check
             nowProgramItem = player?.currentMediaItemIndex
             cacheNowPlaying(false)
+
+            // Entering the last item of a finite playlist: queue what comes next
+            if (currentPlaylist?.isFiniteLocal() == true && nowProgramItem == programItems.size - 1) {
+                queueNextPlaylist()
+            }
 
             mediaItem?.let { item ->
                 Logger.log(
