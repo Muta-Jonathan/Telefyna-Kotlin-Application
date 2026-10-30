@@ -984,6 +984,36 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
+    private val slotCommitToken = Any()
+
+    /**
+     * Pre-roll for a timed slot: warm it up now (measure its media in the background) and switch exactly at
+     * [startAt]. An alarm that arrives at or after the start time switches immediately.
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun prepareSlot(index: Int, startAt: Long) {
+        val playlist = playlistByIndex.getOrNull(index) ?: return
+        val delay = startAt - System.currentTimeMillis()
+        if (delay <= 0) {
+            switchNow(index, false, this)
+            return
+        }
+        Logger.log(AuditLog.Event.SLOT_PREROLL, playlist.name ?: "", delay)
+        if (playlist.type != Playlist.Type.ONLINE) {
+            Thread {
+                playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.indices?.forEach {
+                    runCatching { DurationCacheManager.indexDirectory(this, getDirectoryFromPlaylist(playlist, it)) }
+                }
+            }.start()
+        }
+        handler?.postAtTime({ switchNow(index, false, this) }, slotCommitToken, android.os.SystemClock.uptimeMillis() + delay)
+    }
+
+    /** Drops pending slot commits, e.g. when maintenance rebuilds the schedule. */
+    fun cancelPendingSlotCommits() {
+        handler?.removeCallbacksAndMessages(slotCommitToken)
+    }
+
     override fun onRenderedFirstFrame() {
         if (switchStartedAt > 0) {
             val ms = android.os.SystemClock.elapsedRealtime() - switchStartedAt

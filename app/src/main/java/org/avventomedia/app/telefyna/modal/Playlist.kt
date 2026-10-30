@@ -93,25 +93,27 @@ data class Playlist(
         return startTime
     }
 
-    fun scheduledToday(): Boolean {
+    fun scheduledToday(): Boolean = scheduledOn(Calendar.getInstance())
+
+    /** Whether this playlist runs on [day]: by weekday and/or date; neither means daily. */
+    fun scheduledOn(day: Calendar): Boolean {
         if (!active || parseStart() == null) {
             return false
         } else if (days.isNullOrEmpty()) {
             // No weekdays: runs daily unless restricted to specific dates
-            return dates.isNullOrEmpty() || dates!!.contains(SimpleDateFormat(DATE_FORMAT).format(Calendar.getInstance().time))
+            return dates.isNullOrEmpty() || dates!!.contains(SimpleDateFormat(DATE_FORMAT).format(day.time))
         }
-        val now = Calendar.getInstance()
-        val dateFormat = SimpleDateFormat(DATE_FORMAT)
-        val playoutDays = days?.toList() ?: emptyList()
-        val playoutDates = dates?.toList() ?: emptyList()
-        val dayScheduled = playoutDays.contains(now[Calendar.DAY_OF_WEEK])
-        val dateScheduled = playoutDates.contains(dateFormat.format(now.time))
+        val dayScheduled = days!!.contains(day[Calendar.DAY_OF_WEEK])
+        val dateScheduled = dates.orEmpty().contains(SimpleDateFormat(DATE_FORMAT).format(day.time))
         return dayScheduled || dateScheduled
     }
 
     /** True when this playlist is booked for today's date specifically (not just by weekday or daily). */
-    fun scheduledByDateToday(): Boolean {
-        return active && dates?.contains(SimpleDateFormat(DATE_FORMAT).format(Calendar.getInstance().time)) == true
+    fun scheduledByDateToday(): Boolean = scheduledByDateOn(Calendar.getInstance())
+
+    /** True when this playlist is booked for [day]'s date specifically (not just by weekday or daily). */
+    fun scheduledByDateOn(day: Calendar): Boolean {
+        return active && dates?.contains(SimpleDateFormat(DATE_FORMAT).format(day.time)) == true
     }
 
     // only overrides days, dates and start but maintains the rest

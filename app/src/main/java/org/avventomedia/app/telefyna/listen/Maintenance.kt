@@ -11,6 +11,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import org.avventomedia.app.telefyna.Metrics
 import org.avventomedia.app.telefyna.Monitor
+import org.avventomedia.app.telefyna.ScheduleEngine
+import org.avventomedia.app.telefyna.ScheduledSlot
 import org.avventomedia.app.telefyna.Utils
 import org.avventomedia.app.telefyna.audit.AuditLog
 import org.avventomedia.app.telefyna.audit.Logger
@@ -20,9 +22,10 @@ import java.util.Calendar
 class Maintenance {
     companion object {
         private const val MIN_PLAUSIBLE_YEAR = 2025
+        // Slots are prepared this long before their start time and switched exactly on it
+        const val PREROLL_MS = 15_000L
     }
 
-    private var startedSlotsToday: MutableMap<String, CurrentPlaylist> = HashMap()
     private var pendingIntents: MutableMap<String, PendingIntent> = HashMap()
 
     /**
@@ -58,7 +61,6 @@ class Maintenance {
             Monitor.instance!!.replacePlaylists(listOfNotNull(playlist))
             Monitor.instance!!.switchNow(defaultIndex, false, Monitor.instance!!)
         } else {
-            startedSlotsToday = HashMap()
             pendingIntents = HashMap()
             Logger.log(AuditLog.Event.MAINTENANCE)
             schedule()
@@ -90,6 +92,7 @@ class Maintenance {
 
     @OptIn(UnstableApi::class)
     fun cancelPendingIntents() {
+        Monitor.instance?.cancelPendingSlotCommits()
         if (pendingIntents.isNotEmpty()) {
             for (intent in pendingIntents.values) { // TODO test
                 Monitor.instance?.alarmManager?.cancel(intent)
@@ -131,56 +134,15 @@ class Maintenance {
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
     private fun schedule() {
-        val config = Monitor.instance?.configuration
-
-        config?.let {
-            val basePlaylists = it.playlists ?: emptyArray()
-            val schedules = it.schedules ?: emptyArray()
-            // start time -> name of the slot holding it and whether that slot is booked for today's date
-            val starts = mutableMapOf<String, Pair<String, Boolean>>()
-
-            // Build a map of playlists by ID for O(1) lookup, and store their index for state saving
-            val playlistMap = mutableMapOf<String, Pair<Int, Playlist>>()
-            
-            val newPlaylists = mutableListOf<Playlist>()
-            var monitorIndex = 0
-            // Base playlists are also added to Monitor's list (for default fallback etc)
-            basePlaylists.forEachIndexed { index, playlist ->
-                if (playlist.id != null) {
-                    playlistMap[playlist.id!!] = Pair(monitorIndex, playlist)
-                }
-                newPlaylists.add(playlist)
-                monitorIndex++
-            }
-
-            schedules.forEachIndexed { index, schedule ->
-                val (baseIndex, basePlaylist) = playlistMap[schedule.playlistId] ?: return@forEachIndexed
-                // Create an in-memory Playlist instance to represent this schedule
-                val scheduledPlaylist = basePlaylist.copy().apply {
-                    this.start = schedule.start
-                    this.days = schedule.days
-                    this.dates = schedule.dates
-                    this.active = this.active && schedule.active
-                    this.schedule = baseIndex // Link to base playlist index for state saving
-                    this.id = "sched_${index}"
-                    if (schedule.name != null) this.name = schedule.name
-                    if (schedule.type != null) this.type = schedule.type!!
-                    if (schedule.color != null) this.color = schedule.color
-                    if (schedule.graphics != null) this.graphics = schedule.graphics
-                    if (schedule.emptyReplacer != null) this.emptyReplacer = schedule.emptyReplacer
-                    if (schedule.seekTo != null) this.seekTo = schedule.seekTo!!
-                }
-                
-                newPlaylists.add(scheduledPlaylist)
-
-                if (scheduledPlaylist.scheduledToday()) {
-                    schedulePlaylistAtStart(scheduledPlaylist, monitorIndex, starts)
-                }
-                monitorIndex++
-            }
-            Monitor.instance?.replacePlaylists(newPlaylists)
-            playCurrentSlot()
-        }
+        val monitor = Monitor.instance ?: return
+        val config = monitor.configuration ?: return
+        val now = Calendar.getInstance()
+        val plan = ScheduleEngine.plan(config, now)
+        plan.clashes.forEach { Logger.log(AuditLog.Event.SCHEDULE_CLASH, it.start, it.kept, it.dropped) }
+        monitor.replacePlaylists(plan.playlists)
+        val minutes = ScheduleEngine.minutesOf(now)
+        plan.upcoming(minutes).forEach { scheduleSlot(monitor, it) }
+        playCurrentSlot(monitor, plan.current(minutes))
     }
 
     @OptIn(UnstableApi::class)
@@ -231,73 +193,34 @@ class Maintenance {
         return true
     }
 
+    /**
+     * Arms the slot's alarm PREROLL_MS early: Monitor.prepareSlot warms it up and commits the switch at the exact
+     * start time, rather than doing all the work at the moment an alarm (which a TV box may deliver late) arrives.
+     */
     @OptIn(UnstableApi::class)
-    private fun schedulePlaylistAtStart(playlist: Playlist, index: Int, starts: MutableMap<String, Pair<String, Boolean>>) {
-        val start = playlist.start
-        val dated = playlist.scheduledByDateToday()
-        val existing = start?.let { starts[it] }
-        if (start != null && existing != null) {
-            // Two slots at the same time: one booked for today's date (special event) beats a weekly/daily one,
-            // whatever their order in the config; otherwise the later entry replaces the earlier one
-            val (existingName, existingDated) = existing
-            if (existingDated && !dated) {
-                Logger.log(AuditLog.Event.SCHEDULE_CLASH, start, existingName, playlist.name ?: "")
-                return
-            }
-            Logger.log(AuditLog.Event.SCHEDULE_CLASH, start, playlist.name ?: "", existingName)
-            pendingIntents[start]?.let { operation ->
-                Monitor.instance?.alarmManager?.cancel(operation)
-            }
-            startedSlotsToday.remove(start)
+    private fun scheduleSlot(monitor: Monitor, slot: ScheduledSlot) {
+        val startAt = slot.playlist.getScheduledTime()
+        val intent = Intent(monitor, PlaylistScheduler::class.java).apply {
+            putExtra(PlaylistScheduler.PLAYLIST_INDEX, slot.index)
+            putExtra(PlaylistScheduler.START_AT, startAt)
         }
-        schedulePlayList(playlist, index)
-        if (start != null) {
-            starts[start] = Pair(playlist.name ?: "", dated)
-        }
+        val operation = PendingIntent.getBroadcast(monitor, slot.index, intent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        pendingIntents[slot.start] = operation
+        val fireAt = maxOf(startAt - PREROLL_MS, System.currentTimeMillis() + 500)
+        monitor.alarmManager?.let { Utils.setExactAlarm(it, fireAt, operation) }
     }
 
     @OptIn(UnstableApi::class)
     @RequiresApi(Build.VERSION_CODES.O)
-    private fun playCurrentSlot() {
-        if (startedSlotsToday.isNotEmpty()) {
-            // Latest started slot wins; compare as minutes ("9:00" sorts after "10:00" as a string)
-            val slots = startedSlotsToday.keys.toList().sortedByDescending { startMinutes(it) }
-            val currentPlaylist = startedSlotsToday[slots[0]]
-            // isCurrentSlot should only be true here
-            Monitor.instance?.switchNow(currentPlaylist?.index ?: 0, true, Monitor.instance!!)
-        } else if (Monitor.instance?.isPlayingScheduledSlot() == true) {
+    private fun playCurrentSlot(monitor: Monitor, current: ScheduledSlot?) {
+        when {
+            current != null -> monitor.switchNow(current.index, true, monitor)
             // Midnight maintenance before today's first slot: let yesterday's programme run to its end
             // (finite playlists hand over to fillers on completion) instead of cutting it at 00:00
-            Logger.log(AuditLog.Event.PLAYLIST_CARRY_OVER, Monitor.instance!!.getNowPlayingLabel())
-        } else { // Play first default
-            Monitor.instance?.let { Monitor.instance!!.switchNow(it.getFirstDefaultIndex(), false, Monitor.instance!!) }
+            monitor.isPlayingScheduledSlot() -> Logger.log(AuditLog.Event.PLAYLIST_CARRY_OVER, monitor.getNowPlayingLabel())
+            else -> monitor.switchNow(monitor.getFirstDefaultIndex(), false, monitor)
         }
-    }
-
-    @OptIn(UnstableApi::class)
-    private fun schedulePlayList(playlist: Playlist, index: Int) {
-        val start = playlist.start ?: "default_start"
-        if (playlist.isStarted()) {
-            startedSlotsToday[start] = CurrentPlaylist(index, playlist)
-        } else {
-            val intent = Intent(Monitor.instance, PlaylistScheduler::class.java).apply {
-                putExtra(PlaylistScheduler.PLAYLIST_INDEX, index)
-            }
-            playlist.start?.let { schedule(intent, playlist.getScheduledTime(), it, index) }
-        }
-    }
-
-    @OptIn(UnstableApi::class)
-    private fun schedule(intent: Intent, millis: Long, start: String, index: Int) {
-        val alarmPendingIntent = PendingIntent.getBroadcast(Monitor.instance, index, intent,
-            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        pendingIntents[start] = alarmPendingIntent
-        Monitor.instance?.alarmManager?.let { Utils.setExactAlarm(it, millis, alarmPendingIntent) }
-    }
-
-    private fun startMinutes(start: String): Int {
-        val parts = start.split(":")
-        return (parts[0].trim().toIntOrNull() ?: 0) * 60 + (parts.getOrNull(1)?.trim()?.toIntOrNull() ?: 0)
     }
 
     /*
