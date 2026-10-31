@@ -51,7 +51,7 @@ def update_issue_labels(issue_number, labels, token, repo, ctx):
     except Exception as e:
         print(f"   ❌ Failed to add labels to Issue #{issue_number}: {str(e)}")
 
-def close_issue(issue_number, token, repo, ctx):
+def close_issue(issue_number, token, repo, ctx, not_planned_reason=None):
     headers = {
         "Authorization": f"token {token}",
         "Accept": "application/vnd.github.v3+json",
@@ -60,7 +60,11 @@ def close_issue(issue_number, token, repo, ctx):
     sha = os.environ.get("GITHUB_SHA")
     if sha:
         comment_url = f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments"
-        comment_data = {"body": f"Marked as completed in `README.md`. Closed by commit {sha}."}
+        if not_planned_reason is not None:
+            note = f" {not_planned_reason}" if not_planned_reason else ""
+            comment_data = {"body": f"Crossed out in `README.md` as not planned.{note} Closed by commit {sha}."}
+        else:
+            comment_data = {"body": f"Marked as completed in `README.md`. Closed by commit {sha}."}
         comment_req = urllib.request.Request(comment_url, data=json.dumps(comment_data).encode('utf-8'), headers=headers)
         try:
             urllib.request.urlopen(comment_req, context=ctx)
@@ -68,7 +72,7 @@ def close_issue(issue_number, token, repo, ctx):
             print(f"   ⚠️ Failed to comment on issue #{issue_number}: {e}")
 
     close_url = f"https://api.github.com/repos/{repo}/issues/{issue_number}"
-    close_data = {"state": "closed"}
+    close_data = {"state": "closed", "state_reason": "not_planned" if not_planned_reason is not None else "completed"}
     close_req = urllib.request.Request(close_url, data=json.dumps(close_data).encode('utf-8'), headers=headers)
     close_req.get_method = lambda: 'PATCH'
     try:
@@ -144,6 +148,17 @@ def main():
             is_solved = match.group(1).lower() == 'x'
             raw_text = match.group(2).strip()
             raw_text = raw_text.replace("**[SOLVED]**", "").replace("**[SOLVED]", "").replace("[SOLVED]**", "").strip()
+
+            # A struck-through item ("~~title~~ (reason)") stays in the README as a record but is dropped:
+            # close its issue as not planned, and never create one for it
+            dropped = re.match(r"^~~(.+?)~~\s*(.*)$", raw_text)
+            if dropped:
+                title = dropped.group(1).replace("**", "").strip()
+                if title in existing_issues:
+                    issue_number, state = existing_issues[title]
+                    if state == "open":
+                        close_issue(issue_number, token, repo, ctx, not_planned_reason=dropped.group(2).strip().strip("()"))
+                continue
             
             if ":" in raw_text:
                 parts = raw_text.split(":", 1)
