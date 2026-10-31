@@ -25,6 +25,8 @@ object Playout {
     val loudnessLeveling = LoudnessLevelingAudioProcessor()
     val audioTap = AudioTapProcessor()
     private var streamer: AudioStreamer? = null
+    var livePreloader: org.avventomedia.app.telefyna.player.LivePreloader? = null
+    var playbackThread: android.os.HandlerThread? = null
 
     // What is on air (formerly Monitor fields)
     var playlistByIndex: MutableList<Playlist> = mutableListOf()
@@ -87,8 +89,12 @@ object Playout {
 
     fun release() {
         stopAudioStream()
+        livePreloader?.release()
+        livePreloader = null
         player?.let { runCatching { it.stop(); it.release() } }
         player = null
+        playbackThread?.quitSafely() // the player's playback thread, created with it
+        playbackThread = null
         listener = null
         playlistByIndex = mutableListOf()
         nowPlayingIndex = null

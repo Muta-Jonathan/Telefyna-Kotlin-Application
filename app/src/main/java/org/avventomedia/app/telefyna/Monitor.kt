@@ -39,6 +39,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import org.avventomedia.app.telefyna.player.LivePreloader
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerNotificationManager
 import androidx.media3.ui.PlayerView
@@ -675,25 +679,25 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
-        player = if (renderersFactory != null) {
-            ExoPlayer.Builder(context, renderersFactory)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(SchemeRoutingDataSource.Factory(context)))
-                // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
-                // and hold wake + wifi locks so the stream isn't dropped by power saving
-                .setAudioAttributes(audioAttributes, false)
-                .setHandleAudioBecomingNoisy(false)
-                .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
-                .build()
-        } else {
-            ExoPlayer.Builder(context)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(SchemeRoutingDataSource.Factory(context)))
-                // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
-                // and hold wake + wifi locks so the stream isn't dropped by power saving
-                .setAudioAttributes(audioAttributes, false)
-                .setHandleAudioBecomingNoisy(false)
-                .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
-                .build()
-        }
+        val mediaSourceFactory = DefaultMediaSourceFactory(SchemeRoutingDataSource.Factory(context))
+        // Shared with the live preloader: same playback thread, buffer pool and bandwidth estimate
+        val playbackThread = LivePreloader.playbackThread()
+        val loadControl = DefaultLoadControl()
+        val bandwidthMeter = DefaultBandwidthMeter.getSingletonInstance(context)
+        val builder = (if (renderersFactory != null) ExoPlayer.Builder(context, renderersFactory) else ExoPlayer.Builder(context))
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setLoadControl(loadControl)
+            .setBandwidthMeter(bandwidthMeter)
+            .setPlaybackLooper(playbackThread.looper)
+            // Broadcast appliance: never yield to other apps' audio focus or pause on output route changes,
+            // and hold wake + wifi locks so the stream isn't dropped by power saving
+            .setAudioAttributes(audioAttributes, false)
+            .setHandleAudioBecomingNoisy(false)
+            .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
+        player = builder.build()
+        Playout.livePreloader = LivePreloader(context, renderersFactory ?: DefaultRenderersFactory(context),
+            mediaSourceFactory, loadControl, bandwidthMeter, playbackThread.looper)
+        Playout.playbackThread = playbackThread
 
         return player as ExoPlayer
     }
@@ -959,7 +963,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                         upcomingProgramItems = null
                         // Load the new media items
                         switchStartedAt = android.os.SystemClock.elapsedRealtime()
-                        player!!.setMediaItems(programItems, nowProgramItem ?: 0, nowPosition)
+                        val preloaded = if (currentPlaylist!!.type == Playlist.Type.ONLINE && programItems.size == 1)
+                            Playout.livePreloader?.take(programItems[0]) else null
+                        if (preloaded != null) {
+                            player!!.setMediaSource(preloaded) // already connected and buffered during the pre-roll
+                            Logger.log(AuditLog.Event.LIVE_PRELOAD_USED, getNowPlayingPlaylistLabel())
+                        } else {
+                            player!!.setMediaItems(programItems, nowProgramItem ?: 0, nowPosition)
+                        }
                         if (player!!.playbackState == Player.STATE_IDLE) {
                             player!!.prepare() // first start, or after an error; otherwise the player moves on by itself
                         }
@@ -1019,6 +1030,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             return
         }
         Logger.log(AuditLog.Event.SLOT_PREROLL, playlist.name ?: "", delay)
+        if (playlist.type == Playlist.Type.ONLINE && Utils.internetConnected()) {
+            // Connect and buffer the stream now, so it starts on the second instead of 5-8 s later
+            playlist.urlOrFolder?.trim()?.takeIf { it.isNotEmpty() }?.let { url ->
+                Playout.livePreloader?.preload(MediaItem.Builder().setUri(url).setMediaId(url).setTag(index).build(),
+                    player?.currentMediaItem?.localConfiguration?.uri?.toString())
+                Logger.log(AuditLog.Event.LIVE_PRELOAD, playlist.name ?: "")
+            }
+        }
         if (playlist.type != Playlist.Type.ONLINE) {
             Thread {
                 playlist.urlOrFolder?.split(Utils.COMMA_SPLITTER)?.indices?.forEach {
@@ -1032,6 +1051,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     /** Drops pending slot commits, e.g. when maintenance rebuilds the schedule. */
     fun cancelPendingSlotCommits() {
         handler?.removeCallbacksAndMessages(slotCommitToken)
+        Playout.livePreloader?.clear()
     }
 
     override fun onRenderedFirstFrame() {

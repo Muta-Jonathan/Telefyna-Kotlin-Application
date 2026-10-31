@@ -70,6 +70,8 @@ class AuditLog {
         PLAYOUT_REATTACHED("New screen reattached to playout still airing playlist: %s"),
         SLOT_PREROLL("Preparing slot: %s, starting in %d ms"),
         FIRST_FRAME("First picture %d ms after switching to playlist: %s"),
+        LIVE_PRELOAD("Buffering live stream ahead of its slot: %s"),
+        LIVE_PRELOAD_USED("Started from the pre-buffered stream: %s"),
         STREAM_CONNECTED("Audio stream on air: %s at %d kbps"),
         STREAM_LOST("Audio stream to %s lost (%s), retrying in %d s"),
         STREAM_STOPPED("Audio stream stopped: %s"),
