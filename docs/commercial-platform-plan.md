@@ -110,7 +110,8 @@ All provider callbacks go through **verified webhooks** (signature check, idempo
 
 | Change | Notes |
 |---|---|
-| Pairing screen | Shows the code on first run or after "Pair with Telefyna Cloud" in settings; works with the remote alone. |
+| Pairing screen | On first run (or from settings) shows a code and a QR code for `telefyna.avventomedia.org/pair`; the code renews every 10 minutes. "Keep running without the cloud" keeps today's offline behaviour. Works with the remote alone. |
+| Cloud settings on the box | Status (connected / offline and airing on its own), station and box name, last sync, schedule version, licence, Sync now, Unpair. A short "Connected to …" notice appears once after pairing; nothing else from the cloud ever appears on air except the licence stages. |
 | Cloud client | Heartbeat, config pull, licence pull, log upload, command polling. Runs on a background thread owned by `Playout`/the foreground service, like the audio streamer. Bounded memory and back-off. |
 | Signed config | Verify signature; on failure keep the last good config (the same path as today's bad-config fallback). |
 | Licence enforcement | Offline verification and the degradation steps; on-screen mark drawn by the existing graphics layer. |
