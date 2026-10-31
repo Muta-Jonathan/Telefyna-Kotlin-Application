@@ -330,7 +330,7 @@ The remaining target architecture (the cloud platform) is described in [docs/ind
 - [ ] **HDMI CEC Control:** Support turning the physical TV screen on/off via HDMI-CEC commands based on business hours.
 
 ### Commercial Platform (Future)
-Telefyna is planned to become a generic, white-label playout product sold on subscription, under the commercial side of the [dual licence](LICENSING.md). The device-side work below comes first; the cloud dashboard and billing will be a separate project.
+Telefyna is planned to become a generic, white-label playout product sold on subscription, under the commercial side of the [dual licence](LICENSING.md). The plan is one web app, **Telefyna Cloud** (Laravel), that combines the schedule builder (today's configuration tool, with a free tier), device pairing and live status, reports, billing (mobile money, cards, invoice) and signed offline-verifiable licences. Phases, device API, data model and risks: [docs/commercial-platform-plan.md](docs/commercial-platform-plan.md).
 
 - [ ] **White-Label / De-branding:** Remove hard-coded station and organisation references; branding, slate and notification text come from config.
 - [ ] **Device Registration & Pairing:** Stable device ID with an on-screen pairing code claimed from the dashboard.
