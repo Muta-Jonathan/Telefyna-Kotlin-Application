@@ -2,6 +2,7 @@ package org.avventomedia.app.telefyna.player
 
 import android.content.Context
 import android.os.Handler
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.Renderer
@@ -13,7 +14,8 @@ import androidx.media3.exoplayer.video.VideoRendererEventListener
 @UnstableApi
 class TelefynaRenderersFactory(
     context: Context,
-    private val loudnessLeveling: LoudnessLevelingAudioProcessor? = null
+    private val loudnessLeveling: LoudnessLevelingAudioProcessor? = null,
+    private val audioTap: AudioTapProcessor? = null
 ) : DefaultRenderersFactory(context) {
 
     override fun buildAudioSink(
@@ -21,13 +23,15 @@ class TelefynaRenderersFactory(
         enableFloatOutput: Boolean,
         enableAudioTrackPlaybackParams: Boolean
     ): AudioSink? {
-        if (loudnessLeveling == null) {
+        // Levelling first, then the tap, so the audio stream carries the levelled programme
+        val processors = listOfNotNull<AudioProcessor>(loudnessLeveling, audioTap)
+        if (processors.isEmpty()) {
             return super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)
         }
         return DefaultAudioSink.Builder(context)
             .setEnableFloatOutput(enableFloatOutput)
             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-            .setAudioProcessors(arrayOf(loudnessLeveling))
+            .setAudioProcessors(processors.toTypedArray())
             .build()
     }
 

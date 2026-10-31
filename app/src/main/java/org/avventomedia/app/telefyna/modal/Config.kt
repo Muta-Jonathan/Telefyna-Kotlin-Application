@@ -19,6 +19,8 @@ data class Config(
     var loudnessLeveling: Boolean = false,
     // Target programme level in dBFS RMS (about -23 LUFS for typical speech/music at -20)
     var loudnessTargetDbfs: Double = -20.0,
+    // Radio stream of the programme audio to Icecast / Shoutcast
+    var audioStream: AudioStream? = null,
     // Copy new and changed files from a USB stick or SD card holding a telefyna/ folder
     var driveImport: Boolean = true,
     var alerts: Alerts? = null,
