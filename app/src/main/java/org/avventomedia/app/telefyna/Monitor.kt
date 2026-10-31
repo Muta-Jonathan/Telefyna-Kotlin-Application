@@ -596,6 +596,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         configuration?.let {
             loudnessLeveling.enabled = it.loudnessLeveling
             loudnessLeveling.targetDbfs = it.loudnessTargetDbfs
+            Playout.applyAudioStream(this, it.audioStream?.let { s -> if (s.name.isNullOrBlank()) s.copy(name = it.name) else s })
         }
     }
 
@@ -664,7 +665,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     private fun buildPlayer(activityContext: Context): ExoPlayer {
         val context = activityContext.applicationContext // the player outlives this Activity
         val renderersFactory = instance?.let { 
-            TelefynaRenderersFactory(it.applicationContext, loudnessLeveling).apply {
+            TelefynaRenderersFactory(it.applicationContext, loudnessLeveling, Playout.audioTap).apply {
                 setEnableAudioTrackPlaybackParams(true)
                 setEnableDecoderFallback(true)
             }
@@ -985,6 +986,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                                 it
                             )
                         }
+                        nowProgramItem?.let { programItems.getOrNull(it) }?.let { announceOnStream(it) }
                         // Log now playing
                         cacheNowPlaying(false)
                         triggerGraphics(nowPosition)
@@ -1144,6 +1146,12 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
+    /** Stream title for listeners: playlist name, then the programme's file name (not for online streams). */
+    private fun announceOnStream(item: MediaItem) {
+        val programme = if (currentPlaylist?.type == Playlist.Type.ONLINE) "" else File(getMediaItemName(item)).nameWithoutExtension
+        Playout.streamTitle(listOfNotNull(currentPlaylist?.name, programme).filter { it.isNotBlank() }.joinToString(" - "))
+    }
+
     private fun getMediaItemName(mediaItem: MediaItem): String {
         return try {
             URLDecoder.decode(mediaItem.mediaId.replace("file://", ""), "utf-8")
@@ -1212,6 +1220,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                     getMediaItemName(item)
                 )
                 triggerRepeatWatermark(item)
+                announceOnStream(item)
             }
         }
     }

@@ -104,6 +104,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `auditRetentionDays` | Days of daily audit logs to keep (default 60; `0` keeps everything) |
 | `loudnessLeveling` | `true` levels loudness between programmes, bumpers and streams (default `false`) |
 | `loudnessTargetDbfs` | Target programme level in dBFS RMS when levelling (default `-20`) |
+| `audioStream` | Radio stream of the programme audio to Icecast or Shoutcast; see [Audio streaming](#audio-streaming) |
 | `automationDisabled` | `true` plays only the first playlist, with no schedule |
 | `notificationsDisabled` | Hide the playback notification |
 | `alerts` | Email alerts: `mailer` (SMTP) and `subscribers` (emails, event category, attachments; `attachReports: true` also emails each new PDF report) |
@@ -136,6 +137,37 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 - `_ONE` plays a single programme per slot, advancing each time.
 
 Resume points follow the **file**, not its position in the folder. Adding, renaming the order of, or removing *other* files doesn't reset a series or shift it to the wrong episode. If the remembered file itself is removed, playback continues with the file now in its place.
+
+### Audio streaming
+
+Telefyna can send the programme's **sound** to an Icecast or Shoutcast server at the same time as it plays on the TV, so the channel can also be heard as an internet radio station. Listeners get audio only, plus the station name and a now-playing title (`Playlist - programme`). The TV picture, graphics and slate are not affected.
+
+```json
+"audioStream": {
+  "enabled": true,
+  "server": "ICECAST",
+  "host": "radio.example.org",
+  "port": 8000,
+  "mount": "/live",
+  "user": "source",
+  "password": "your-source-password",
+  "bitrateKbps": 128,
+  "genre": "Gospel",
+  "publicListing": false
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `server` | `ICECAST` (HTTP PUT to `mount`, Icecast 2.4+) or `SHOUTCAST` (v1 source protocol on `port` + 1, which Shoutcast v2 also accepts) |
+| `host`, `port` | The server and its listener port |
+| `mount`, `user` | Icecast mount point and source user (default `/live`, `source`) |
+| `password` | Source password (for Shoutcast v2 with several streams: `password:#2`) |
+| `bitrateKbps` | AAC bitrate (default `128`) |
+| `name`, `genre`, `description`, `url`, `publicListing` | Station details shown to listeners (`name` defaults to the config's `name`) |
+| `metadata` | Send the now-playing title (default `true`) |
+
+The stream is AAC-LC, 44.1 kHz stereo, after loudness levelling. Silence is sent while nothing is playing, so listeners stay connected through switches. If the server can't be reached Telefyna retries (2 s, doubling to 60 s), and connections and drops are written to the audit log (`STREAM_CONNECTED`, `STREAM_LOST`). Changing `audioStream` in `config.json` applies without restarting playback. Video streaming (HLS, RTMP or SRT output) is planned.
 
 ---
 
