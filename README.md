@@ -104,6 +104,7 @@ Audit logs and control files are kept together in **`telefynaAudit/` at the root
 | `auditRetentionDays` | Days of daily audit logs to keep (default 60; `0` keeps everything) |
 | `loudnessLeveling` | `true` levels loudness between programmes, bumpers and streams (default `false`) |
 | `loudnessTargetDbfs` | Target programme level in dBFS RMS when levelling (default `-20`) |
+| `audioStream` | Radio stream of the programme audio to Icecast or Shoutcast; see [Audio streaming](#audio-streaming) |
 | `automationDisabled` | `true` plays only the first playlist, with no schedule |
 | `notificationsDisabled` | Hide the playback notification |
 | `alerts` | Email alerts: `mailer` (SMTP) and `subscribers` (emails, event category, attachments; `attachReports: true` also emails each new PDF report) |
@@ -151,6 +152,37 @@ An Android TV box has no satellite tuner, so a satellite channel reaches Telefyn
 - **Encrypted (pay-TV) channels** can only come decrypted from a licensed receiver. Telefyna can't decrypt them, and rebroadcasting needs the rights.
 - **Plain HTTP** is allowed for these LAN sources (`network_security_config.xml` permits cleartext).
 - **Recording** a satellite channel to files on a schedule (to air later as a local playlist) is not supported yet.
+
+### Audio streaming
+
+Telefyna can send the programme's **sound** to an Icecast or Shoutcast server at the same time as it plays on the TV, so the channel can also be heard as an internet radio station. Listeners get audio only, plus the station name and a now-playing title (`Playlist - programme`). The TV picture, graphics and slate are not affected.
+
+```json
+"audioStream": {
+  "enabled": true,
+  "server": "ICECAST",
+  "host": "radio.example.org",
+  "port": 8000,
+  "mount": "/live",
+  "user": "source",
+  "password": "your-source-password",
+  "bitrateKbps": 128,
+  "genre": "Gospel",
+  "publicListing": false
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `server` | `ICECAST` (HTTP PUT to `mount`, Icecast 2.4+) or `SHOUTCAST` (v1 source protocol on `port` + 1, which Shoutcast v2 also accepts) |
+| `host`, `port` | The server and its listener port |
+| `mount`, `user` | Icecast mount point and source user (default `/live`, `source`) |
+| `password` | Source password (for Shoutcast v2 with several streams: `password:#2`) |
+| `bitrateKbps` | AAC bitrate (default `128`) |
+| `name`, `genre`, `description`, `url`, `publicListing` | Station details shown to listeners (`name` defaults to the config's `name`) |
+| `metadata` | Send the now-playing title (default `true`) |
+
+The stream is AAC-LC, 44.1 kHz stereo, after loudness levelling. Silence is sent while nothing is playing, so listeners stay connected through switches. If the server can't be reached Telefyna retries (2 s, doubling to 60 s), and connections and drops are written to the audit log (`STREAM_CONNECTED`, `STREAM_LOST`). Changing `audioStream` in `config.json` applies without restarting playback. Video streaming (HLS, RTMP or SRT output) is planned.
 
 ---
 
@@ -345,7 +377,7 @@ The remaining target architecture (the cloud platform) is described in [docs/ind
 - [ ] **HDMI CEC Control:** Support turning the physical TV screen on/off via HDMI-CEC commands based on business hours.
 
 ### Commercial Platform (Future)
-Telefyna is planned to become a generic, white-label playout product sold on subscription, under the commercial side of the [dual licence](LICENSING.md). The device-side work below comes first; the cloud dashboard and billing will be a separate project.
+Telefyna is planned to become a generic, white-label playout product sold on subscription, under the commercial side of the [dual licence](LICENSING.md). The plan is one web app, **Telefyna Cloud** (Laravel), that combines the schedule builder (today's configuration tool, with a free tier), device pairing and live status, reports, billing (mobile money, cards, invoice) and signed offline-verifiable licences. Phases, device API, data model and risks: [docs/commercial-platform-plan.md](docs/commercial-platform-plan.md).
 
 - [ ] **White-Label / De-branding:** Remove hard-coded station and organisation references; branding, slate and notification text come from config.
 - [ ] **Device Registration & Pairing:** Stable device ID with an on-screen pairing code claimed from the dashboard.
@@ -370,7 +402,7 @@ Telefyna is planned to become a generic, white-label playout product sold on sub
 - [x] Handle player idling on stream; resume play/seekTo.
 - [ ] Add support for automatic drive syncing.
 - [x] **Urgent:** Connecting Bluetooth plays fillers? (17 Mar 21, 18:15). Also, player switches but plays only audio at 18:30. Fixed by #85 (no Activity rebuild when a Bluetooth remote/keyboard connects or disconnects; verified with a virtual Bluetooth keyboard on the Android TV 13 emulator) and #86 (Bluetooth audio route changes no longer pause playout).
-- [ ] Support YouTube links and streams.
+- [ ] ~~Support YouTube links and streams.~~ (Not planned: playing YouTube without ads means extracting streams, which breaks YouTube's terms and breaks often on unattended boxes. For live content, send the encoder's feed to Telefyna as SRT, RTMP or HLS instead.)
 - [x] Build reports from audits.
 - [ ] Read satellite channels and decoders as local playlists and streams.
 - [ ] Support streaming to HLS, Shoutcast, and Loudcast.

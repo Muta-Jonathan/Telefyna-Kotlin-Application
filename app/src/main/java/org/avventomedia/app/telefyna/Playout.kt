@@ -6,7 +6,13 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import org.avventomedia.app.telefyna.modal.Playlist
+import android.content.Context
+import org.avventomedia.app.telefyna.audit.AuditLog
+import org.avventomedia.app.telefyna.audit.Logger
+import org.avventomedia.app.telefyna.modal.AudioStream
+import org.avventomedia.app.telefyna.player.AudioTapProcessor
 import org.avventomedia.app.telefyna.player.LoudnessLevelingAudioProcessor
+import org.avventomedia.app.telefyna.stream.AudioStreamer
 
 /**
  * Process-wide playout: the player and what it is airing. It outlives the Monitor Activity, so when the screen is
@@ -17,6 +23,8 @@ import org.avventomedia.app.telefyna.player.LoudnessLevelingAudioProcessor
 object Playout {
     var player: ExoPlayer? = null
     val loudnessLeveling = LoudnessLevelingAudioProcessor()
+    val audioTap = AudioTapProcessor()
+    private var streamer: AudioStreamer? = null
 
     // What is on air (formerly Monitor fields)
     var playlistByIndex: MutableList<Playlist> = mutableListOf()
@@ -50,7 +58,35 @@ object Playout {
         }
     }
 
+    /** Starts, restarts or stops the audio stream to match [settings]; nothing happens when they are unchanged. */
+    fun applyAudioStream(context: Context, settings: AudioStream?) {
+        if (settings?.enabled == true && !settings.isUsable) {
+            Logger.logWithContext(context, AuditLog.Event.ERROR, "audioStream is enabled but its host or password is missing")
+        }
+        val wanted = settings?.takeIf { it.isUsable }?.copy()
+        if (wanted == streamer?.settings) return
+        stopAudioStream()
+        wanted?.let { s ->
+            streamer = AudioStreamer(context.applicationContext, s).also {
+                audioTap.sink = it::write
+                it.start()
+            }
+        }
+    }
+
+    /** The now playing title for stream listeners. */
+    fun streamTitle(title: String) {
+        streamer?.nowPlaying(title)
+    }
+
+    private fun stopAudioStream() {
+        audioTap.sink = null
+        streamer?.stop()
+        streamer = null
+    }
+
     fun release() {
+        stopAudioStream()
         player?.let { runCatching { it.stop(); it.release() } }
         player = null
         listener = null
