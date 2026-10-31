@@ -21,6 +21,8 @@ data class Config(
     var loudnessTargetDbfs: Double = -20.0,
     // Radio stream of the programme audio to Icecast / Shoutcast
     var audioStream: AudioStream? = null,
+    // Copy new and changed files from a USB stick or SD card holding a telefyna/ folder
+    var driveImport: Boolean = true,
     var alerts: Alerts? = null,
     var playlists: Array<Playlist>? = null,
     var schedules: Array<Schedule>? = null

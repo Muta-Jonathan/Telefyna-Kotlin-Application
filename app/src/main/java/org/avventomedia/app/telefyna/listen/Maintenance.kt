@@ -77,6 +77,8 @@ class Maintenance {
                         }
                     }
                 }
+                // A drive left in the box: import it now (mounting it later is caught by DriveMounted)
+                Monitor.instance?.let { DriveImporter.importFromMountedDrives(it) }
                 // Reports for the week/month/year that just ended, built before old logs are pruned
                 Monitor.instance?.generateReports(org.avventomedia.app.telefyna.audit.ReportPeriod.endedBy(System.currentTimeMillis()), toDate = false)
                 // Old daily logs are pruned off the main thread too
