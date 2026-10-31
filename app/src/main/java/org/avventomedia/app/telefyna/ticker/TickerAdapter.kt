@@ -6,6 +6,7 @@ import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.annotation.OptIn
 import androidx.annotation.RequiresApi
@@ -41,8 +42,15 @@ class TickerAdapter(
         holder.timeClock.setTextSize(TypedValue.COMPLEX_UNIT_PX, px(GraphicsScale.TICKER_CLOCK_TEXT).toFloat())
         holder.timeClock.setPadding(px(GraphicsScale.TICKER_CLOCK_PADDING_START), 0, px(GraphicsScale.TICKER_CLOCK_PADDING_END), holder.timeClock.paddingBottom)
         (holder.timeClock.layoutParams as ViewGroup.MarginLayoutParams).marginStart = px(-GraphicsScale.TICKER_CLOCK_OVERLAP)
-        holder.whiteLabel.setPadding(px(GraphicsScale.TICKER_STRIP_PADDING_START), 0, 0, px(GraphicsScale.TICKER_STRIP_PADDING_BOTTOM))
-        (holder.whiteLabel.layoutParams as ViewGroup.MarginLayoutParams).marginStart = px(GraphicsScale.TICKER_START)
+        // The white strip at the start is exactly as tall as the ticker bar, never taller
+        holder.whiteLabel.setPadding(0, 0, 0, 0)
+        (holder.whiteLabel.layoutParams as RelativeLayout.LayoutParams).apply {
+            width = px(GraphicsScale.TICKER_STRIP_WIDTH)
+            height = 0
+            marginStart = px(GraphicsScale.TICKER_START)
+            addRule(RelativeLayout.ALIGN_TOP, R.id.scrollTextImageSection)
+            addRule(RelativeLayout.ALIGN_BOTTOM, R.id.scrollTextImageSection)
+        }
         ((holder.tickerText.parent as View).layoutParams as ViewGroup.MarginLayoutParams).marginEnd = px(GraphicsScale.TICKER_TEXT_END)
     }
 

@@ -31,8 +31,7 @@ object GraphicsScale {
     const val TICKER_CLOCK_OVERLAP = 300
     const val TICKER_CLOCK_PADDING_START = 18
     const val TICKER_CLOCK_PADDING_END = 15
-    const val TICKER_STRIP_PADDING_START = 6
-    const val TICKER_STRIP_PADDING_BOTTOM = 18
+    const val TICKER_STRIP_WIDTH = 6
 
     /** Scale of a [widthPx]×[heightPx] screen against 1080p; fits the 16:9 reference inside it. */
     fun of(widthPx: Int, heightPx: Int): Float {
