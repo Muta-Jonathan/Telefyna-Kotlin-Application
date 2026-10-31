@@ -46,6 +46,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.signature.ObjectKey
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
@@ -1767,16 +1768,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         if (watermarkFile?.exists() == true) {
             val watermarkView: ImageView = findViewById(R.id.watermark)
 
-            // Clear previous image to prevent memory leaks
-            Glide.with(watermarkView.context).clear(watermarkView)
-
-            // Use Glide to load and display the image
-            Glide.with(watermarkView.context)
-                .asDrawable() // allows gifs and static images
-                .load(watermarkFile)
-                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
-                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
-                .into(watermarkView)
+            loadGraphic(watermarkView, watermarkFile)
             watermarkView.visibility = View.VISIBLE
             Logger.log(AuditLog.Event.DISPLAY_REPEAT_PROGRAM_WATERMARK_ON)
         }
@@ -1800,16 +1792,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
             }
 
-            // Clear previous image to prevent memory leaks
-            Glide.with(logoView.context).clear(logoView)
-
-            // Use Glide to load and display the image
-            Glide.with(logoView.context)
-                .asDrawable() // allows gifs and static images
-                .load(logoFile)
-                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
-                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
-                .into(logoView)
+            loadGraphic(logoView, logoFile)
 
             logoView.visibility = View.VISIBLE
         }
@@ -1851,18 +1834,24 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 }
             }
 
-            // Clear previous image to prevent memory leaks
-            Glide.with(logoView.context).clear(logoView)
-
-            // Use Glide to load and display the image
-            Glide.with(logoView.context)
-                .asDrawable() // allows gifs and static images
-                .load(logoFile)
-                .diskCacheStrategy(DiskCacheStrategy.ALL) // Cache in memory & disk for faster loads
-                .skipMemoryCache(true) // Avoid memory cache to reflect changes instantly
-                .into(logoView)
+            loadGraphic(logoView, logoFile)
             logoView.visibility = View.VISIBLE
         }
+    }
+
+    /**
+     * Shows a station graphic (logo, LIVE logo, REPEAT watermark; png, jpg, webp or gif). The disk cache is keyed on the
+     * file's path, modification time and size, so replacing the file under the same name shows the new image.
+     */
+    private fun loadGraphic(view: ImageView, file: File) {
+        Glide.with(view.context).clear(view) // release the previous image
+        Glide.with(view.context)
+            .asDrawable() // allows gifs and static images
+            .load(file)
+            .signature(ObjectKey("${file.lastModified()}-${file.length()}"))
+            .diskCacheStrategy(DiskCacheStrategy.ALL)
+            .skipMemoryCache(true)
+            .into(view)
     }
 
     private fun regenerateConfiguration(resetSeekTo: Boolean): Config? {
