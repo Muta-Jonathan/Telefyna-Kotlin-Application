@@ -11,8 +11,11 @@ This plan turns the *Commercial Platform (Future)* roadmap items into one produc
 |---|---|
 | Product shape | **One product.** The configuration tool is rebuilt as the schedule builder inside Telefyna Cloud. A **free tier** keeps today's "build a schedule and export `config.json`" use. |
 | Stack | **Laravel (PHP 8.2+) and MySQL on the existing Bluehost hosting.** No framework lock-in to Bluehost: the same app moves to a VPS when needed. |
-| Payments | **Mobile money (MTN, Airtel), cards, and manual invoice / bank transfer.** PayPal is listed as optional (to confirm). |
-| Look | Three directions in the design canvas, sharing one design language. *Studio Light* is recommended. |
+| Payments | **Mobile money (MTN, Airtel), cards, PayPal, and manual invoice / bank transfer.** |
+| Look | **Direction A, Studio Light** (IBM Plex type, light neutral ground, tally-red accent). |
+| Price | **Free:** UGX 0 (1 box). **Station:** UGX 1,000,000 per month (up to 5 boxes). **Network:** quoted. |
+| Exemptions | **Complimentary accounts**, starting with Avvento Media's own station: every feature, never invoiced, licences renewed automatically. Only Avvento admins can grant one, optionally with an end date (e.g. a partner pilot), and each change is logged. |
+| Domain | The app runs on **avventomedia.org** (exact subdomain or path to choose at deploy, e.g. `telefyna.avventomedia.org`). |
 
 ## 2. Principles
 
@@ -48,7 +51,7 @@ Telefyna boxes (Android TV): pair, heartbeat, pull config + licence, upload logs
 
 | Table | Key fields |
 |---|---|
-| `organisations` | name, country, billing email, plan, status |
+| `organisations` | name, country, billing email, plan, status, `complimentary` (bool), `complimentary_until` (nullable date), `complimentary_reason` |
 | `users` / `memberships` | email, password hash, 2FA secret; role per organisation: owner, scheduler, engineer, viewer |
 | `stations` | organisation, name, time zone, logo, current published config version |
 | `devices` | station, name, model, app version, paired at, token hash, last heartbeat, last status JSON |
@@ -83,6 +86,7 @@ All endpoints are box-initiated, JSON, versioned, and rate-limited per device.
 
 - **Token:** `{org, plan, features[], maxDevices, validUntil, graceUntil, issuedAt}` signed with Ed25519. The box verifies it locally, so no internet is needed day to day.
 - **Grace and degradation** (shown in the Billing design): days 0–7 reminders only; days 8–14 a small "licence expired" mark on screen; after day 14, fillers and logo only, with schedules paused. Never black.
+- **Complimentary accounts** get a token with all features and a rolling validity that the cloud renews automatically, so an exempt station never sees reminders or marks.
 - **Free tier:** no token needed. The app runs today's feature set from a manually installed config. Cloud features (pairing, heartbeat, remote config, reports upload, alerts) need a paid plan.
 - **Gating** happens in two places: the web app (what you can configure) and the box (features in the token, e.g. radio stream, number of online streams, white label).
 
@@ -93,7 +97,7 @@ All endpoints are box-initiated, JSON, versioned, and rate-limited per device.
 | Mobile money (MTN, Airtel) | Through an aggregator that covers Uganda and neighbouring markets (Flutterwave or Pesapal; choose after comparing fees, payout time and recurring-billing support). The customer approves each renewal with their PIN, so renewal is "request to pay" with reminders, not silent auto-debit. |
 | Cards | Same aggregator's hosted card fields, so card data never touches our servers (keeps PCI scope minimal). |
 | Invoice / bank transfer | PDF invoice emailed 14 days before renewal, with a unique reference (e.g. `TFY-2026-0142`) to put in the transfer narration. See *Confirming bank transfers* below. |
-| PayPal | Optional, to confirm. |
+| PayPal | PayPal Subscriptions for automatic monthly renewal. Where an account can't pay in UGX, PayPal charges the USD equivalent; the invoice stays in UGX. |
 
 **Confirming bank transfers.** Bank transfers don't notify us, so each one is matched by hand at first and automatically later:
 1. The customer clicks **I've paid** on the invoice and can attach the bank slip. The invoice shows *Awaiting confirmation* and their grace period is paused.
@@ -145,7 +149,6 @@ Estimates assume one full-time developer; they are planning ranges, not commitme
 
 ## 12. Open questions
 
-1. Confirm the extra payment option ("Other"): PayPal or something else?
-2. Pricing and plan limits (the Billing design uses `[PRICE]` placeholders).
-3. Which design direction (A Studio Light, B Control Room, C Editorial)?
-4. Domain for the app (e.g. `app.telefyna.tv` or a path on `avventomedia.org`)?
+1. Is UGX 1,000,000 per month for the Station plan (assumed), per year, or per box?
+2. Network plan pricing and the exact plan limits (boxes, team size, log retention).
+3. Exact address on avventomedia.org (subdomain or path).
