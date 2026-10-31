@@ -1754,9 +1754,10 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     /** Logo, watermarks, lower third and ticker sized for this screen (see [GraphicsScale]). */
     private fun applyGraphicsScale(scale: Float) {
         val px = { reference: Int -> GraphicsScale.px(reference, scale) }
-        fun size(id: Int, width: Int, height: Int, margins: (android.widget.RelativeLayout.LayoutParams) -> Unit) {
-            val view = findViewById<View>(id) ?: return
+        fun size(id: Int, width: Int, height: Int, fit: ImageView.ScaleType, margins: (android.widget.RelativeLayout.LayoutParams) -> Unit) {
+            val view = findViewById<ImageView>(id) ?: return
             view.setPadding(0, 0, 0, 0)
+            view.scaleType = fit // keep the image's shape, pinned to its corner
             (view.layoutParams as? android.widget.RelativeLayout.LayoutParams)?.let {
                 it.width = width
                 it.height = height
@@ -1764,13 +1765,13 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
                 view.layoutParams = it
             }
         }
-        size(R.id.topLogo, px(GraphicsScale.LOGO), px(GraphicsScale.LOGO)) {
+        size(R.id.topLogo, px(GraphicsScale.LOGO_WIDTH), px(GraphicsScale.LOGO_HEIGHT), ImageView.ScaleType.FIT_END) {
             it.topMargin = px(GraphicsScale.LOGO_TOP); it.marginEnd = px(GraphicsScale.LOGO_END)
         }
-        size(R.id.bottomLogo, px(GraphicsScale.LOGO), px(GraphicsScale.LOGO)) {
+        size(R.id.bottomLogo, px(GraphicsScale.LOGO_WIDTH), px(GraphicsScale.LOGO_HEIGHT), ImageView.ScaleType.FIT_END) {
             it.bottomMargin = px(GraphicsScale.LOGO_ABOVE_TICKER); it.marginEnd = px(GraphicsScale.LOGO_END)
         }
-        size(R.id.watermark, px(GraphicsScale.WATERMARK), px(GraphicsScale.WATERMARK)) {
+        size(R.id.watermark, px(GraphicsScale.WATERMARK_WIDTH), px(GraphicsScale.WATERMARK_HEIGHT), ImageView.ScaleType.FIT_START) {
             it.topMargin = px(GraphicsScale.WATERMARK_TOP); it.marginStart = px(GraphicsScale.WATERMARK_START)
         }
         findViewById<View>(R.id.lowerThird)?.let { view ->

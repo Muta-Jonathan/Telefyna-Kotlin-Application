@@ -12,11 +12,14 @@ object GraphicsScale {
     const val REFERENCE_HEIGHT = 1080f
 
     // Sizes in pixels on a 1080p picture; margins keep graphics inside the 5% title-safe area
-    const val LOGO = 150
+    // Logo area is wider than tall so wordmarks read well; the image keeps its shape inside it
+    const val LOGO_WIDTH = 300
+    const val LOGO_HEIGHT = 140
     const val LOGO_TOP = 48
     const val LOGO_END = 72
     const val LOGO_ABOVE_TICKER = 112
-    const val WATERMARK = 110
+    const val WATERMARK_WIDTH = 220
+    const val WATERMARK_HEIGHT = 110
     const val WATERMARK_START = 72
     const val WATERMARK_TOP = 48
     const val LOWER_THIRD_HEIGHT = 200

@@ -8,7 +8,7 @@ class GraphicsScaleTest {
     @Test
     fun fullHdTvIsTheReference() {
         assertEquals(1f, GraphicsScale.of(1920, 1080), 0.0001f)
-        assertEquals(GraphicsScale.LOGO, GraphicsScale.px(GraphicsScale.LOGO, GraphicsScale.of(1920, 1080)))
+        assertEquals(GraphicsScale.LOGO_HEIGHT, GraphicsScale.px(GraphicsScale.LOGO_HEIGHT, GraphicsScale.of(1920, 1080)))
     }
 
     @Test
@@ -18,7 +18,7 @@ class GraphicsScaleTest {
         assertEquals(0.6667f, small, 0.001f)
         assertEquals(2f, big, 0.0001f)
         // Logo is the same fraction of the picture height everywhere
-        assertEquals(GraphicsScale.px(GraphicsScale.LOGO, small) / 720f, GraphicsScale.px(GraphicsScale.LOGO, big) / 2160f, 0.002f)
+        assertEquals(GraphicsScale.px(GraphicsScale.LOGO_HEIGHT, small) / 720f, GraphicsScale.px(GraphicsScale.LOGO_HEIGHT, big) / 2160f, 0.002f)
     }
 
     @Test
