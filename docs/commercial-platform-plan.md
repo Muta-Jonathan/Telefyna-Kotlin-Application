@@ -13,9 +13,9 @@ This plan turns the *Commercial Platform (Future)* roadmap items into one produc
 | Stack | **Laravel (PHP 8.2+) and MySQL on the existing Bluehost hosting.** No framework lock-in to Bluehost: the same app moves to a VPS when needed. |
 | Payments | **Mobile money (MTN, Airtel), cards, PayPal, and manual invoice / bank transfer.** |
 | Look | **Direction A, Studio Light** (IBM Plex type, light neutral ground, tally-red accent). |
-| Price | **Free:** UGX 0 (1 box). **Station:** UGX 1,000,000 per month (up to 5 boxes). **Network:** quoted. |
+| Price | **Free:** UGX 0 (1 box). **Station:** UGX 1,000,000 per month (up to 2 boxes). **Network:** quoted. |
 | Exemptions | **Complimentary accounts**, starting with Avvento Media's own station: every feature, never invoiced, licences renewed automatically. Only Avvento admins can grant one, optionally with an end date (e.g. a partner pilot), and each change is logged. |
-| Domain | The app runs on **avventomedia.org** (exact subdomain or path to choose at deploy, e.g. `telefyna.avventomedia.org`). |
+| Domain | The app runs at **telefyna.avventomedia.org**. |
 
 ## 2. Principles
 
@@ -149,6 +149,5 @@ Estimates assume one full-time developer; they are planning ranges, not commitme
 
 ## 12. Open questions
 
-1. Is UGX 1,000,000 per month for the Station plan (assumed), per year, or per box?
-2. Network plan pricing and the exact plan limits (boxes, team size, log retention).
-3. Exact address on avventomedia.org (subdomain or path).
+1. A third box on the Station plan: upgrade to Network, or pay per extra box (and how much)?
+2. Network plan pricing, and the remaining limits (team size, log retention).
