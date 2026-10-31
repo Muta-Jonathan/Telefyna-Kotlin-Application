@@ -194,6 +194,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     // When the current switch started loading, to log how long the new picture takes (0 = nothing pending)
     private var switchStartedAt = 0L
     private lateinit var tickerRecyclerView: RecyclerView
+    private var graphicsScale = 0f
     private lateinit var tickerAdapter: TickerAdapter
     private var lowerThirdView: VideoView? = null
     // Pending delayed graphics; cancelled on switch so the previous playlist's graphics never air over the next one
@@ -375,6 +376,14 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.monitor)
+        // Size the on-air graphics as a share of the picture, whatever the screen's density
+        findViewById<View>(R.id.player).addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+            val scale = GraphicsScale.of(v.width, v.height)
+            if (scale != graphicsScale) {
+                graphicsScale = scale
+                applyGraphicsScale(scale)
+            }
+        }
 
         // HACK: Disable back press (Issue arises due to remote control by RustDesk)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -1742,6 +1751,44 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
         }
     }
 
+    /** Logo, watermarks, lower third and ticker sized for this screen (see [GraphicsScale]). */
+    private fun applyGraphicsScale(scale: Float) {
+        val px = { reference: Int -> GraphicsScale.px(reference, scale) }
+        fun size(id: Int, width: Int, height: Int, margins: (android.widget.RelativeLayout.LayoutParams) -> Unit) {
+            val view = findViewById<View>(id) ?: return
+            view.setPadding(0, 0, 0, 0)
+            (view.layoutParams as? android.widget.RelativeLayout.LayoutParams)?.let {
+                it.width = width
+                it.height = height
+                margins(it)
+                view.layoutParams = it
+            }
+        }
+        size(R.id.topLogo, px(GraphicsScale.LOGO), px(GraphicsScale.LOGO)) {
+            it.topMargin = px(GraphicsScale.LOGO_TOP); it.marginEnd = px(GraphicsScale.LOGO_END)
+        }
+        size(R.id.bottomLogo, px(GraphicsScale.LOGO), px(GraphicsScale.LOGO)) {
+            it.bottomMargin = px(GraphicsScale.LOGO_ABOVE_TICKER); it.marginEnd = px(GraphicsScale.LOGO_END)
+        }
+        size(R.id.watermark, px(GraphicsScale.WATERMARK), px(GraphicsScale.WATERMARK)) {
+            it.topMargin = px(GraphicsScale.WATERMARK_TOP); it.marginStart = px(GraphicsScale.WATERMARK_START)
+        }
+        findViewById<View>(R.id.lowerThird)?.let { view ->
+            view.layoutParams = view.layoutParams.apply { height = px(GraphicsScale.LOWER_THIRD_HEIGHT) }
+        }
+        findViewById<View>(R.id.tickerRecyclerView)?.let { view ->
+            (view.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let {
+                it.bottomMargin = px(GraphicsScale.TICKER_BOTTOM)
+                view.layoutParams = it
+            }
+        }
+        // A ticker already on screen was built at the old size: rebuild its rows
+        if (::tickerRecyclerView.isInitialized && ::tickerAdapter.isInitialized) {
+            tickerAdapter = TickerAdapter(tickerAdapter.items, scale)
+            tickerRecyclerView.adapter = tickerAdapter
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.M)
     private fun initTickers(news: News) {
         // Initialize the RecyclerView
@@ -1751,9 +1798,7 @@ class Monitor : AppCompatActivity(), PlayerNotificationManager.NotificationListe
             TickerItem(text = news.getMessagesArray().joinToString(" • "), time = news.showTime)
         )
         // Initialize the adapter with ticker items
-        tickerAdapter = TickerAdapter(
-            tickerItems
-        )
+        tickerAdapter = TickerAdapter(tickerItems, graphicsScale)
         tickerRecyclerView.adapter = tickerAdapter
     }
 
